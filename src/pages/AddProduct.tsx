@@ -12,7 +12,7 @@ import {
   Activity,
   Heart
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product, ProductVariant } from '../types';
 
 interface AddProductProps {
   onAddProduct: (product: Omit<Product, 'id'>) => void;
@@ -29,23 +29,52 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   const [color, setColor] = useState(editingProduct?.color || '');
   const [description, setDescription] = useState(editingProduct?.description || '');
   const [price, setPrice] = useState<number>(editingProduct?.price || 0);
+  const [originalPrice, setOriginalPrice] = useState<number | ''>(editingProduct?.originalPrice ?? '');
+  const [discountedPrice, setDiscountedPrice] = useState<number | ''>(editingProduct?.discountedPrice ?? '');
   const [stock, setStock] = useState<number>(editingProduct?.stock || 0);
   const [frameShape, setFrameShape] = useState(editingProduct?.frameShape || 'Standard');
   const [material, setMaterial] = useState(editingProduct?.material || 'Standard');
   const [gender, setGender] = useState(editingProduct?.gender || 'Unisex');
-  const [selectedFaceShapes, setSelectedFaceShapes] = useState<string[]>(
-    editingProduct?.faceShapes || ['Square', 'Heart']
-  );
+  const [variants, setVariants] = useState<ProductVariant[]>(() => {
+    if (editingProduct?.variants && editingProduct.variants.length) return editingProduct.variants;
+    // default single variant using color and imageUrl
+    return [{ color: editingProduct?.color || '', images: editingProduct?.imageUrl ? [editingProduct.imageUrl] : [] }];
+  });
 
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const faceShapesOpts = ['Oval', 'Square', 'Round', 'Heart', 'Diamond'];
+  // face-shape compatibility removed for clothing / AR try-on
 
-  const toggleFaceShape = (shape: string) => {
-    setSelectedFaceShapes(prev => 
-      prev.includes(shape) ? prev.filter(s => s !== shape) : [...prev, shape]
-    );
+  const addVariant = () => {
+    setVariants(prev => [...prev, { color: '', images: [] }]);
+  };
+
+  const removeVariant = (index: number) => {
+    setVariants(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateVariantColor = (index: number, colorVal: string) => {
+    setVariants(prev => prev.map((v, i) => i === index ? { ...v, color: colorVal } : v));
+  };
+
+  const updateVariantImages = (index: number, files: FileList | null) => {
+    if (!files) return;
+    const urls: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const url = URL.createObjectURL(f);
+      urls.push(url);
+    }
+    setVariants(prev => prev.map((v, i) => i === index ? { ...v, images: [...v.images, ...urls] } : v));
+  };
+
+  const removeVariantImage = (vIndex: number, imgIndex: number) => {
+    setVariants(prev => prev.map((v, i) => {
+      if (i !== vIndex) return v;
+      const images = v.images.filter((_, idx) => idx !== imgIndex);
+      return { ...v, images };
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -53,6 +82,18 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     if (!name || !brand) {
       alert("Please fill in the Product Name and Brand fields.");
       return;
+    }
+
+    // validate variants: at least one variant and each must have >=1 image
+    if (!variants || variants.length === 0) {
+      alert('Please add at least one color variant with images.');
+      return;
+    }
+    for (const v of variants) {
+      if (!v.color || v.images.length === 0) {
+        alert('Each variant must have a color name and at least one image.');
+        return;
+      }
     }
 
     setSaving(true);
@@ -70,14 +111,16 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         color,
         description,
         price: Number(price) || 120,
+        originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
+        discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
         stock: Number(stock) || 50,
         status: (Number(stock) || 50) > 15 ? 'In Stock' as const : 'Low Stock' as const,
-        imageUrl: mockupGlintImage,
+        imageUrl: variants[0]?.images[0] || mockupGlintImage,
         frameShape,
         material,
         gender,
         sku: 'NV-' + Math.floor(1000 + Math.random() * 9000),
-        faceShapes: selectedFaceShapes
+        variants,
       };
 
       if (editingProduct && onUpdateProduct) {
@@ -227,7 +270,35 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
             </div>
             
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">RETAIL PRICE (INR)</label>
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Original Price (optional)</label>
+              <div className="relative group">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 transition-colors">₹</span>
+                <input 
+                  type="number"
+                  value={originalPrice as any || ''}
+                  onChange={e => setOriginalPrice(e.target.value ? Number(e.target.value) : '')}
+                  placeholder="e.g. 5999"
+                  className="bg-white/40 border border-primary/20 rounded-xl pl-8 pr-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Discounted / Sale Price (optional)</label>
+              <div className="relative group">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 transition-colors">₹</span>
+                <input 
+                  type="number"
+                  value={discountedPrice as any || ''}
+                  onChange={e => setDiscountedPrice(e.target.value ? Number(e.target.value) : '')}
+                  placeholder="e.g. 4999"
+                  className="bg-white/40 border border-primary/20 rounded-xl pl-8 pr-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Retail Price (INR)</label>
               <div className="relative group">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 group-focus-within:text-primary transition-colors">₹</span>
                 <input 
@@ -316,33 +387,63 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
             </div>
           </div>
 
-          <div className="mt-8">
-            <label className="font-display text-xs font-bold text-slate-400 block mb-4 uppercase tracking-wider">
-              FACE SHAPE COMPATIBILITY
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-              {faceShapesOpts.map((shape) => {
-                const isSelected = selectedFaceShapes.includes(shape);
-                return (
-                  <button
-                    key={shape}
-                    type="button"
-                    onClick={() => toggleFaceShape(shape)}
-                    className={`p-4 rounded-xl text-xs font-semibold cursor-pointer border hover:translate-y-[-1px] transition-all text-center ${
-                      isSelected
-                        ? 'bg-primary/10 text-primary border-primary'
-                        : 'bg-white/40 hover:bg-white/60 text-slate-500 border-slate-200/50'
-                    }`}
-                  >
-                    <span>{shape}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Variants handled below */}
         </section>
 
         {/* Action bounds buttons footer */}
+        
+        {/* Variants (color -> multiple images) */}
+        <section className="bg-white/60 backdrop-blur-md rounded-2xl p-6 border border-slate-200/50">
+          <div className="flex items-center gap-3 mb-6">
+            <ImageIcon className="w-5 h-5 text-primary" />
+            <h2 className="font-display text-base font-bold text-slate-800">Variants (Color & Images)</h2>
+          </div>
+
+          <div className="space-y-4">
+            {variants.map((v, idx) => (
+              <div key={idx} className="border rounded-xl p-4">
+                <div className="flex items-center gap-4 mb-3">
+                  <input
+                    type="text"
+                    value={v.color}
+                    onChange={e => updateVariantColor(idx, e.target.value)}
+                    placeholder="Color name (e.g. Red)"
+                    className="flex-1 bg-white/40 border border-primary/20 rounded-xl px-4 py-2 outline-none"
+                  />
+                  <div className="flex items-center gap-2">
+                    <label className="px-3 py-2 bg-primary/10 rounded cursor-pointer text-sm">
+                      Upload Images
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture
+                        multiple
+                        onChange={e => updateVariantImages(idx, e.target.files)}
+                        className="hidden"
+                      />
+                    </label>
+                    <button type="button" onClick={() => removeVariant(idx)} className="px-3 py-2 bg-rose-50 rounded text-rose-600">Remove</button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 flex-wrap">
+                  {v.images && v.images.length ? v.images.map((img, i) => (
+                    <div key={i} className="w-24 h-24 bg-slate-100 rounded overflow-hidden relative">
+                      <img src={img} alt={`variant-${idx}-${i}`} className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => removeVariantImage(idx, i)} className="absolute top-1 right-1 bg-black/40 text-white rounded-full p-1">×</button>
+                    </div>
+                  )) : (
+                    <div className="text-sm text-slate-400">No images yet — upload at least one.</div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            <div>
+              <button type="button" onClick={addVariant} className="px-4 py-2 bg-white border rounded">Add Color Variant</button>
+            </div>
+          </div>
+        </section>
         <div className="flex items-center justify-end gap-4 pt-6">
           <button 
             type="button"

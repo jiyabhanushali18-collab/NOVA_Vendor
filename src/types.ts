@@ -13,7 +13,11 @@ export interface Product {
   material?: string;
   gender?: string;
   sku?: string;
-  faceShapes?: string[];
+  // Variants: each variant has a color and multiple images (at least one)
+  variants?: ProductVariant[];
+  // Optional pricing: original was MRP, discounted is current sale price
+  originalPrice?: number;
+  discountedPrice?: number;
   rating?: number;
   ratingCount?: number;
   arTryOnRating?: number;
@@ -27,6 +31,12 @@ export interface ProductReview {
   rating: number;
   comment: string;
   createdAt: string;
+}
+
+export interface ProductVariant {
+  id?: string;
+  color: string;
+  images: string[]; // image URLs or local object URLs for previews
 }
 
 export interface Order {
