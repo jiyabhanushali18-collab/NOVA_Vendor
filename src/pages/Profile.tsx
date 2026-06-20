@@ -216,7 +216,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                 Supply Philosophy
               </h4>
               <p className="text-xs text-slate-450 leading-relaxed font-semibold">
-                This verification card represents your authority to distribute custom optical styles on our secure nodes. To modify banking routes or core ownership credentials, please submit an official partnership update ticker to our admin workspace.
+                This verification card represents your authority to distribute custom product assortments on our secure nodes. To modify banking routes or core ownership credentials, please submit an official partnership update ticker to our admin workspace.
               </p>
             </div>
 
@@ -236,7 +236,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
             <div>
               <h5 className="font-display text-sm font-bold">Encrypted Partner Link</h5>
               <p className="text-xs text-slate-400 max-w-lg mt-0.5 font-medium leading-relaxed">
-                Your connection to the NOVA Global Optical Network utilizes enterprise-grade optical verification channels to secure supply inventories and payment nodes.
+                Your connection to the NOVA Global Partner Network utilizes enterprise-grade verification channels to secure supply inventories and payment nodes.
               </p>
             </div>
           </div>

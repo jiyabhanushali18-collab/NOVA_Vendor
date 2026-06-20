@@ -34,7 +34,7 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
   
   // New order form fields state
   const [customerName, setCustomerName] = useState('');
-  const [productName, setProductName] = useState('Prism Lens X14');
+  const [productName, setProductName] = useState('Prism Core X14');
   const [quantity, setQuantity] = useState(1);
   const [amount, setAmount] = useState(120);
 
@@ -107,13 +107,13 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
             Order Management
           </h2>
           <p className="text-slate-500 font-medium text-sm md:text-base mt-1">
-            View and process your customer transactions through our optical-grade precision analytics.
+            View and process your customer transactions through our precision analytics.
           </p>
         </div>
         <div className="flex gap-3">
           <button 
             onClick={() => {
-              alert("Exporting optical transaction list as standard-compliant CSV format to downloads directory.");
+              alert("Exporting transaction list as standard-compliant CSV format to downloads directory.");
             }}
             className="flex items-center gap-2 px-5 py-2.5 bg-white/60 border border-slate-200/50 text-primary font-display text-sm font-bold rounded-xl hover:bg-white/90 cursor-pointer transition-all shrink-0"
           >
@@ -424,12 +424,12 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
                     onChange={e => setProductName(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl h-11 px-3 text-sm font-semibold focus:outline-none focus:border-primary outline-none cursor-pointer"
                   >
-                    <option>Prism Lens X14</option>
-                    <option>Optic Core Pro</option>
+                    <option>Prism Core X14</option>
+                    <option>Nova Core Pro</option>
                     <option>Lidar Module v2</option>
                     <option>Refraction Kit</option>
-                    <option>Nova Glass Filter</option>
-                    <option>Ray-Ban Aviators</option>
+                    <option>Nova Power Filter</option>
+                    <option>Eclipse Prime</option>
                   </select>
                 </div>
 

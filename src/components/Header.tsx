@@ -51,7 +51,7 @@ export default function Header({
           <Search className="text-slate-400 w-4 h-4 mr-2" />
           <input 
             className="bg-transparent border-none focus:outline-none text-sm w-44 lg:w-64 placeholder-slate-400 text-slate-700" 
-            placeholder="Search orders, lenses..." 
+            placeholder="Search orders, products..." 
             type="text"
           />
         </div>

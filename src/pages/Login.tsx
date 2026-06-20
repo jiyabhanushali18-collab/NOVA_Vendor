@@ -1,30 +1,166 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, Globe, Loader2, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
+import {
+  browserLocalPersistence,
+  browserSessionPersistence,
+  createUserWithEmailAndPassword,
+  setPersistence,
+  signInWithEmailAndPassword
+} from 'firebase/auth';
+import { auth } from '../firebase';
 
 interface LoginProps {
   onLoginSuccess: (email: string) => void;
 }
 
+type LocalUser = {
+  email: string;
+  password: string;
+};
+
+const LOCAL_AUTH_USERS_KEY = 'nova-local-auth-users';
+const LOCAL_AUTH_SESSION_KEY = 'nova-local-auth-session';
+const LOCAL_AUTH_REMEMBER_KEY = 'nova-local-auth-remember';
+const DEMO_EMAIL = 'name@company.com';
+const DEMO_PASSWORD = 'password123';
+
+const getAuthErrorCode = (err: unknown) => {
+  if (err && typeof err === 'object' && 'code' in err) {
+    return String((err as { code?: unknown }).code ?? '');
+  }
+  return '';
+};
+
+const getAuthErrorMessage = (err: unknown) => {
+  const code = getAuthErrorCode(err);
+
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'An account already exists for this email. Try logging in instead.';
+    case 'auth/invalid-credential':
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+      return 'The email or password is incorrect.';
+    case 'auth/weak-password':
+      return 'Use a password with at least 6 characters.';
+    case 'auth/invalid-email':
+      return 'Enter a valid email address.';
+    case 'auth/network-request-failed':
+      return 'Firebase could not be reached. Local demo sign in is available.';
+    case 'auth/operation-not-allowed':
+    case 'auth/configuration-not-found':
+      return 'Email/password authentication is not enabled in Firebase. Local demo sign in is available.';
+    case 'auth/unauthorized-domain':
+    case 'auth/app-not-authorized':
+    case 'auth/api-key-not-valid':
+      return 'Firebase is not configured for this app URL. Local demo sign in is available.';
+    default:
+      return err instanceof Error ? err.message : 'Authentication failed. Please verify your credentials.';
+  }
+};
+
+const readLocalUsers = (): LocalUser[] => {
+  try {
+    const value = window.localStorage.getItem(LOCAL_AUTH_USERS_KEY);
+    return value ? JSON.parse(value) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeLocalUsers = (users: LocalUser[]) => {
+  window.localStorage.setItem(LOCAL_AUTH_USERS_KEY, JSON.stringify(users));
+};
+
+const completeLocalSignIn = (userEmail: string, shouldRemember: boolean) => {
+  const sessionStore = shouldRemember ? window.localStorage : window.sessionStorage;
+
+  window.localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
+  window.sessionStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
+  window.localStorage.setItem(LOCAL_AUTH_REMEMBER_KEY, shouldRemember ? 'true' : 'false');
+  sessionStore.setItem(LOCAL_AUTH_SESSION_KEY, userEmail);
+  return userEmail;
+};
+
+const signInLocally = (userEmail: string, userPassword: string, shouldRemember: boolean) => {
+  const normalizedEmail = userEmail.trim().toLowerCase();
+  const localUser = readLocalUsers().find(user => user.email === normalizedEmail);
+
+  if (localUser?.password === userPassword || (normalizedEmail === DEMO_EMAIL && userPassword === DEMO_PASSWORD)) {
+    return completeLocalSignIn(normalizedEmail, shouldRemember);
+  }
+
+  throw new Error('The email or password is incorrect.');
+};
+
+const signUpLocally = (userEmail: string, userPassword: string, shouldRemember: boolean) => {
+  const normalizedEmail = userEmail.trim().toLowerCase();
+  const users = readLocalUsers();
+
+  if (users.some(user => user.email === normalizedEmail)) {
+    throw new Error('An account already exists for this email. Try logging in instead.');
+  }
+
+  writeLocalUsers([...users, { email: normalizedEmail, password: userPassword }]);
+  return completeLocalSignIn(normalizedEmail, shouldRemember);
+};
+
 export default function Login({ onLoginSuccess }: LoginProps) {
   const [email, setEmail] = useState('name@company.com');
   const [password, setPassword] = useState('password123');
   const [showPassword, setShowPassword] = useState(false);
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [keepSignedIn, setKeepSignedIn] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setNotice('');
+
+    if (password.length < 6) {
+      setError('Use a password with at least 6 characters.');
+      return;
+    }
+
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      let userEmail = email.trim().toLowerCase();
+      await setPersistence(auth, keepSignedIn ? browserLocalPersistence : browserSessionPersistence);
+
+      if (mode === 'login') {
+        const credential = await signInWithEmailAndPassword(auth, userEmail, password);
+        userEmail = credential.user.email || userEmail;
+      } else {
+        const credential = await createUserWithEmailAndPassword(auth, userEmail, password);
+        userEmail = credential.user.email || userEmail;
+      }
+
       setIsSuccess(true);
-      
       setTimeout(() => {
-        onLoginSuccess(email);
+        onLoginSuccess(userEmail);
       }, 800);
-    }, 1200);
+    } catch (err) {
+      try {
+        const userEmail = mode === 'login'
+          ? signInLocally(email, password, keepSignedIn)
+          : signUpLocally(email, password, keepSignedIn);
+
+        setNotice('Using local demo authentication because Firebase rejected the request.');
+        setIsSuccess(true);
+        setTimeout(() => {
+          onLoginSuccess(userEmail);
+        }, 800);
+      } catch {
+        setError(getAuthErrorMessage(err));
+        setIsLoading(false);
+      }
+    }
   };
 
   return (
@@ -57,7 +193,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               Vendor Portal
             </h2>
             <p className="text-slate-400 font-medium text-sm mt-1">
-              Sign in to manage your precision optics store
+              {mode === 'login'
+                ? 'Sign in to manage your product catalog'
+                : 'Create an account to manage your product catalog'}
             </p>
           </div>
 
@@ -115,7 +253,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             {/* Keep Signed In toggle */}
             <div className="flex items-center">
               <label className="relative inline-flex items-center cursor-pointer group">
-                <input type="checkbox" className="sr-only peer" defaultChecked />
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={keepSignedIn}
+                  onChange={(e) => setKeepSignedIn(e.target.checked)}
+                />
                 <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary transition-colors duration-300" />
                 <span className="ml-3 text-sm font-semibold text-slate-500 hover:text-slate-700 selection:bg-none transition-colors">
                   Keep me signed in
@@ -141,11 +284,59 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 </svg>
               ) : (
                 <>
-                  <span>Login to Portal</span>
+                  <span>{mode === 'login' ? 'Login to Portal' : 'Create Account'}</span>
                   <ArrowRight className="w-5 h-5" />
                 </>
               )}
             </button>
+
+            {error && (
+              <p className="text-sm text-rose-500 font-medium mt-2">
+                {error}
+              </p>
+            )}
+
+            {notice && (
+              <p className="text-sm text-emerald-600 font-medium mt-2">
+                {notice}
+              </p>
+            )}
+
+            <div className="text-center mt-2">
+              {mode === 'login' ? (
+                <p className="text-sm text-slate-500">
+                  New here?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signup');
+                      setError('');
+                      setNotice('');
+                      setIsSuccess(false);
+                    }}
+                    className="font-bold text-primary hover:underline"
+                  >
+                    Create an account
+                  </button>
+                </p>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setError('');
+                      setNotice('');
+                      setIsSuccess(false);
+                    }}
+                    className="font-bold text-primary hover:underline"
+                  >
+                    Log in
+                  </button>
+                </p>
+              )}
+            </div>
           </form>
 
           {/* Partnership note */}

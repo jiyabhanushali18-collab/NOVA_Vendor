@@ -46,7 +46,7 @@ export default function Analytics() {
             Performance Insights
           </h2>
           <p className="text-slate-500 font-medium text-sm md:text-base max-w-2xl mt-1">
-            Real-time data visualization for your optical supply chain performance across multiple regions and product categories.
+            Real-time data visualization for your product supply chain performance across multiple regions and product categories.
           </p>
         </div>
         <div className="flex gap-4">
@@ -196,7 +196,7 @@ export default function Analytics() {
                 onMouseEnter={() => setActiveCategory('Accessories')}
                 onMouseLeave={() => setActiveCategory(null)}
               />
-              {/* Lenses segment - 45% */}
+              {/* Electronics segment - 45% */}
               <circle 
                 cx="18" 
                 cy="18" 
@@ -207,10 +207,10 @@ export default function Analytics() {
                 strokeDasharray="45 100" 
                 strokeDashoffset="-30"
                 className="transition-all duration-300 hover:stroke-[6] cursor-pointer"
-                onMouseEnter={() => setActiveCategory('Lenses')}
+                onMouseEnter={() => setActiveCategory('Electronics')}
                 onMouseLeave={() => setActiveCategory(null)}
               />
-              {/* Frames segment - 25% */}
+              {/* Apparel segment - 25% */}
               <circle 
                 cx="18" 
                 cy="18" 
@@ -221,14 +221,14 @@ export default function Analytics() {
                 strokeDasharray="25 100" 
                 strokeDashoffset="-75"
                 className="transition-all duration-300 hover:stroke-[6] cursor-pointer"
-                onMouseEnter={() => setActiveCategory('Frames')}
+                onMouseEnter={() => setActiveCategory('Apparel')}
                 onMouseLeave={() => setActiveCategory(null)}
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none select-none">
               <span className="font-display text-2xl font-black text-slate-800">
-                {activeCategory === 'Lenses' && '45%'}
-                {activeCategory === 'Frames' && '25%'}
+                {activeCategory === 'Electronics' && '45%'}
+                {activeCategory === 'Apparel' && '25%'}
                 {activeCategory === 'Accessories' && '30%'}
                 {!activeCategory && '100%'}
               </span>
@@ -239,17 +239,17 @@ export default function Analytics() {
           </div>
 
           <div className="space-y-2 mt-2 select-none border-t border-slate-100 pt-3">
-            <div className={`flex items-center justify-between p-1 rounded transition-all ${activeCategory === 'Lenses' ? 'bg-slate-100' : ''}`}>
+            <div className={`flex items-center justify-between p-1 rounded transition-all ${activeCategory === 'Electronics' ? 'bg-slate-100' : ''}`}>
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
-                <span className="text-xs font-semibold text-slate-500">Lenses</span>
+                <span className="text-xs font-semibold text-slate-500">Electronics</span>
               </div>
               <span className="font-semibold text-xs text-slate-700">45%</span>
             </div>
-            <div className={`flex items-center justify-between p-1 rounded transition-all ${activeCategory === 'Frames' ? 'bg-slate-100' : ''}`}>
+            <div className={`flex items-center justify-between p-1 rounded transition-all ${activeCategory === 'Apparel' ? 'bg-slate-100' : ''}`}>
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#ab8ffe]"></span>
-                <span className="text-xs font-semibold text-slate-500">Frames</span>
+                <span className="text-xs font-semibold text-slate-500">Apparel</span>
               </div>
               <span className="font-semibold text-xs text-slate-700">25%</span>
             </div>
@@ -291,7 +291,7 @@ export default function Analytics() {
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden flex items-center justify-center p-0.5 shrink-0">
                       <img 
-                        alt="Lens" 
+                        alt="Electronics category" 
                         className="w-full h-full object-cover rounded-lg" 
                         src="https://lh3.googleusercontent.com/aida-public/AB6AXuDGPlNuDzsiGephZeIJceReLqVVYm4gT8tZuLOhChkryUE7ABfaLJnmMm_wF1lcs5IsXTuR3XQ37dNtzKftKd6NbR_pavl0G6_jhzRXRXTChTSX-Ho2X-ED_qXMAaBXHnIQX9Edspjftg42nO7KI2oQJcdMP27Y9JkGqING29H8um1wxB8AFdpR5vIykW_EAuQuoLAP9J5ooI1Wm7iP4fsbiXWkcUk0PA_raZDZUlVGdw3NUh1SGnCoz7Kp9eQNlev9ldy07lAhDZA"
                         referrerPolicy="no-referrer"
@@ -305,7 +305,7 @@ export default function Analytics() {
                 </td>
                 <td className="py-4 block md:table-cell">
                   <span className="px-2.5 py-0.5 bg-primary/10 text-[10px] font-bold text-primary rounded-full select-none">
-                    Lenses
+                    Electronics
                   </span>
                 </td>
                 <td className="py-4 font-bold text-xs text-slate-650 block md:table-cell">1,402</td>
@@ -324,21 +324,21 @@ export default function Analytics() {
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden flex items-center justify-center p-0.5 shrink-0">
                       <img 
-                        alt="Frame" 
+                        alt="Apparel category" 
                         className="w-full h-full object-cover rounded-lg" 
                         src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7CykKK27-OX9czXThVuU67Qbt3p0tXFsjGwhig5hyvB6czam4xaBidiNiidsBhMcl0JVxPDhBxQ_L74MbjeSobMOCqvzxBiIHMunsDPPKnzfsljlVsA0rhLV1xhlwvN_sXfPuATZHcfzS_ucHg81f0Q8fCUt46YugpNk6uAth2elF9H8LTH8xuQD0r59alDAsO5SvvjqJpayJmvylYYJj2-nVPmZLri2CYyqZ3Zkk5tk4GFZT9XF1v8HVkPl3ZIv00eqtP5bcE60"
                         referrerPolicy="no-referrer"
                       />
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-700 text-sm">Titan-Edge Frames</p>
+                      <p className="font-semibold text-slate-700 text-sm">Titan-Edge Apparel</p>
                       <p className="text-[10px] font-display font-medium text-slate-400">SKU: NV-3310</p>
                     </div>
                   </div>
                 </td>
                 <td className="py-4 block md:table-cell">
                   <span className="px-2.5 py-0.5 bg-secondary-container/10 text-[10px] font-bold text-secondary rounded-full select-none">
-                    Frames
+                    Apparel
                   </span>
                 </td>
                 <td className="py-4 font-bold text-xs text-slate-650 block md:table-cell">982</td>
@@ -397,7 +397,6 @@ export default function Analytics() {
         </div>
       </div>
 
-      { AnimatePresence }
       {showExportModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <motion.div 
@@ -415,7 +414,7 @@ export default function Analytics() {
               Report Generated Successfully
             </h3>
             <p className="text-sm text-slate-500 max-w-[320px] mx-auto leading-relaxed">
-              Your comprehensive optical performance spreadsheet (PDF &amp; CSV formats) has been assembled and is ready for download in your connected network logs directory.
+              Your comprehensive product performance spreadsheet (PDF &amp; CSV formats) has been assembled and is ready for download in your connected network logs directory.
             </p>
             <button 
               onClick={() => setShowExportModal(false)}

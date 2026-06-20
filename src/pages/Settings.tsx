@@ -47,7 +47,7 @@ export default function Settings() {
           <div className="flex justify-between items-center py-2">
             <div>
               <p className="text-xs font-bold text-slate-700">Order Placed Ticker</p>
-              <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Receive immediate screen audio/ping when a client places optical purchases</p>
+              <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Receive immediate screen audio/ping when a client places orders</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" checked={orderAlerts} onChange={() => setOrderAlerts(!orderAlerts)} className="sr-only peer" />
@@ -58,7 +58,7 @@ export default function Settings() {
           <div className="flex justify-between items-center py-2">
             <div>
               <p className="text-xs font-bold text-slate-700">Low Stock Warnings</p>
-              <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Get flags daily when frame styles or lens arrays fall under 30 units</p>
+              <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Get flags daily when product inventory levels fall under 30 units</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" checked={stockWarnings} onChange={() => setStockWarnings(!stockWarnings)} className="sr-only peer" />
@@ -85,7 +85,7 @@ export default function Settings() {
           <ShieldCheck className="w-5 h-5 text-primary" />
           <div>
             <h3 className="font-display font-bold text-slate-805 text-sm">Security &amp; Gateways</h3>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Encrypt authentication sessions to guard proprietary frame styles</p>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">Encrypt authentication sessions to guard proprietary product catalogs</p>
           </div>
         </div>
 
@@ -109,7 +109,7 @@ export default function Settings() {
           <Key className="w-5 h-5 text-primary" />
           <div>
             <h3 className="font-display font-bold text-slate-805 text-sm">Connected API Integration</h3>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Utilize the partner token to sync frame details automatically into peripheral apps</p>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">Utilize the partner token to sync product details automatically into peripheral apps</p>
           </div>
         </div>
 

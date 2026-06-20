@@ -25,13 +25,13 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   // Input fields status
   const [name, setName] = useState(editingProduct?.name || '');
   const [brand, setBrand] = useState(editingProduct?.brand || '');
-  const [category, setCategory] = useState(editingProduct?.category || 'Eyeglasses');
+  const [category, setCategory] = useState(editingProduct?.category || 'General');
   const [color, setColor] = useState(editingProduct?.color || '');
   const [description, setDescription] = useState(editingProduct?.description || '');
   const [price, setPrice] = useState<number>(editingProduct?.price || 0);
   const [stock, setStock] = useState<number>(editingProduct?.stock || 0);
-  const [frameShape, setFrameShape] = useState(editingProduct?.frameShape || 'Aviator');
-  const [material, setMaterial] = useState(editingProduct?.material || 'Acetate');
+  const [frameShape, setFrameShape] = useState(editingProduct?.frameShape || 'Standard');
+  const [material, setMaterial] = useState(editingProduct?.material || 'Standard');
   const [gender, setGender] = useState(editingProduct?.gender || 'Unisex');
   const [selectedFaceShapes, setSelectedFaceShapes] = useState<string[]>(
     editingProduct?.faceShapes || ['Square', 'Heart']
@@ -125,7 +125,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
                 type="text"
                 value={brand}
                 onChange={e => setBrand(e.target.value)}
-                placeholder="e.g. Nova Optics"
+                placeholder="e.g. Nova Supply"
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200"
                 required
               />
@@ -137,11 +137,11 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
                 onChange={e => setCategory(e.target.value)}
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
               >
-                <option>Eyeglasses</option>
-                <option>Sunglasses</option>
-                <option>Blue Light Glasses</option>
-                <option>Safety Eyewear</option>
-                <option>Luxury Aviators</option>
+                <option>General</option>
+                <option>Electronics</option>
+                <option>Accessories</option>
+                <option>Apparel</option>
+                <option>Home</option>
                 <option>Sport</option>
               </select>
             </div>
@@ -160,7 +160,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
               <textarea 
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                placeholder="Describe the aesthetic and technical lens details..."
+                placeholder="Describe the aesthetic and functional details of the product..."
                 rows={4}
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 resize-none"
               />
@@ -187,7 +187,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
               <img 
                 className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" 
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtMVlsRWdEW-pFyEO3U1hZmeAx-sIK5aHnPNfHs_ZxVKxYrdHeeO6AGJ0hEtLf_KoVgfJrVpTlZVgDQrt1LjKsjQUehidZvRfhmKVHgPdVgWzkXuFrMkzJoNy6k4qO2ZfPi6LWdLyjSVqmJ_dJSiL71zLrSKeRrhJj13a1z7pJNMXclUgouUPHH-EvRZwzKVUK8tAOEMnn3SdZ4R3SzcmdNSEbHQT5RkQj57Xs7gTe7HX7f7mongL_TZ8uuH8bOOQFICSz6GjyGp0" 
-                alt="Glasses sample 2" 
+                alt="Product sample 2" 
                 referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
@@ -200,7 +200,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
               <img 
                 className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" 
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuASB6mwCD-qC-PscxNz6BcA3TcYiQVfEBYXySBdUr7hq6LKxrttnUJ3z2WiBPId19N9UaZSLQGZ7Afv00M6WSjOrwRNPljqyogBprzm6kOUnhTF3coKQmaJNOQIsyXLc4rEvTaWeeHd5fEvZ39Zzo6PjiPE2KppVNT91IVztocbWpN_e-T4g1PQZJI3g5e_zxapnzhKRJWptO0IGyri9dfl5HSly3QiKEGQsZT5ydN3hKEJkY7ycMJwEhVSpCxCrTnw9W6tZGBZ3Lc" 
-                alt="Glasses sample 3" 
+                alt="Product sample 3" 
                 referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
@@ -263,27 +263,27 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
           </div>
         </section>
 
-        {/* Specialized Optical fields */}
+        {/* Product Attributes */}
         <section className="bg-white/60 backdrop-blur-md rounded-2xl p-6 border border-slate-200/50">
           <div className="flex items-center gap-3 mb-6">
             <Eye className="w-5 h-5 text-primary" />
-            <h2 className="font-display text-base font-bold text-slate-800">Optical Specifications</h2>
+            <h2 className="font-display text-base font-bold text-slate-800">Product Specifications</h2>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">FRAME SHAPE</label>
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">ITEM STYLE</label>
               <select
                 value={frameShape}
                 onChange={e => setFrameShape(e.target.value)}
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
               >
-                <option>Aviator</option>
-                <option>Wayfarer</option>
-                <option>Cat Eye</option>
-                <option>Round</option>
-                <option>Rectangular</option>
-                <option>Geometric</option>
+                <option>Standard</option>
+                <option>Modern</option>
+                <option>Sport</option>
+                <option>Minimal</option>
+                <option>Premium</option>
+                <option>Performance</option>
               </select>
             </div>
             

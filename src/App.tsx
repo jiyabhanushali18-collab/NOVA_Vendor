@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth } from './firebase';
 import { initialProducts, initialOrders, initialActivities, initialProfile } from './store';
 import { Product, Order, Activity, ProfileInfo } from './types';
 import Sidebar from './components/Sidebar';
@@ -15,10 +17,34 @@ import Settings from './pages/Settings';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+const LOCAL_AUTH_SESSION_KEY = 'nova-local-auth-session';
+const LOCAL_AUTH_REMEMBER_KEY = 'nova-local-auth-remember';
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const rememberedLocalSession = window.localStorage.getItem(LOCAL_AUTH_REMEMBER_KEY) === 'true';
+
+    if (!rememberedLocalSession) {
+      window.localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const hasLocalSession = !!window.sessionStorage.getItem(LOCAL_AUTH_SESSION_KEY)
+        || (rememberedLocalSession && !!window.localStorage.getItem(LOCAL_AUTH_SESSION_KEY));
+
+      if (user || hasLocalSession) {
+        setIsLoggedIn(true);
+        return;
+      }
+
+      setIsLoggedIn(false);
+    });
+    return unsubscribe;
+  }, []);
 
   // Core application lists
   const [products, setProducts] = useState<Product[]>(initialProducts);
@@ -85,7 +111,16 @@ export default function App() {
     ]);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Logout failed', err);
+    }
+    window.localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
+    window.localStorage.removeItem(LOCAL_AUTH_REMEMBER_KEY);
+    window.sessionStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
     setIsLoggedIn(false);
     setActiveTab('dashboard');
   };
@@ -102,7 +137,7 @@ export default function App() {
       {
         id: 'prod-' + Date.now(),
         type: 'inventory',
-        title: 'New Frame Added',
+        title: 'New Product Added',
         description: `${newProd.brand} ${newProd.name} (${newProd.stock} Units Added)`,
         time: 'Just now'
       },

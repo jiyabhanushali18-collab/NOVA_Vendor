@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  Glasses, 
   Truck, 
   DollarSign, 
   AlertTriangle, 
@@ -14,7 +13,8 @@ import {
   Sparkles,
   Eye,
   Activity as ActivityIcon,
-  ShoppingCart
+  ShoppingCart,
+  Package
 } from 'lucide-react';
 import { Product, Order, Activity, ProfileInfo } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -64,7 +64,7 @@ export default function Dashboard({
             Welcome back, {profileInfo.storeName}
           </h2>
           <p className="text-slate-500 font-medium text-sm md:text-base mt-1">
-            Here's your optical supply performance for the last 30 days.
+            Here's your supply performance for the last 30 days.
           </p>
         </div>
         <div className="flex gap-4 w-full sm:w-auto">
@@ -91,7 +91,7 @@ export default function Dashboard({
         <div className="bg-white/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200/50 hover:scale-[1.02] transition-transform duration-300">
           <div className="flex justify-between items-start mb-4">
             <div className="p-3 bg-primary/10 rounded-xl text-primary">
-              <Glasses className="w-5 h-5" />
+              <Package className="w-5 h-5" />
             </div>
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">+12%</span>
           </div>
@@ -163,7 +163,7 @@ export default function Dashboard({
           <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="font-display text-lg font-bold text-slate-800">Revenue Trends</h3>
-              <p className="text-xs font-medium text-slate-400">Growth comparison between AR Lenses vs Polarized</p>
+              <p className="text-xs font-medium text-slate-400">Growth comparison between core product categories</p>
             </div>
             <select 
               value={selectedRange} 
@@ -263,11 +263,11 @@ export default function Dashboard({
               >
                 <div className="font-bold border-b border-slate-700 pb-1 mb-1">{hoveredDataPoint.label}</div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Anti-Reflect:</span>
+                  <span className="text-slate-400">Performance:</span>
                   <span className="font-bold text-accent">{hoveredDataPoint.val1}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Polarized:</span>
+                  <span className="text-slate-400">Mix:</span>
                   <span className="font-bold text-secondary-fixed">{hoveredDataPoint.val2}</span>
                 </div>
               </div>
@@ -277,11 +277,11 @@ export default function Dashboard({
           <div className="flex justify-center gap-8 mt-4 border-t border-slate-100 pt-4 select-none">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
               <span className="w-3 h-3 rounded-full bg-primary inline-block"></span>
-              <span>Anti-Reflective Lenses</span>
+              <span>Electronics Focus</span>
             </div>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
               <span className="w-3.5 h-1.5 border border-dashed border-primary bg-secondary-container/40 rounded inline-block"></span>
-              <span>Polarized Coating</span>
+              <span>Apparel Momentum</span>
             </div>
           </div>
         </div>
@@ -355,7 +355,7 @@ export default function Dashboard({
               <thead>
                 <tr className="text-slate-400 font-display text-[10px] uppercase font-bold border-b border-slate-100 pb-3 block md:table-row">
                   <th className="pb-3 md:pb-4">Model Name</th>
-                  <th className="pb-3 md:pb-4">Lens Type</th>
+                  <th className="pb-3 md:pb-4">Product Type</th>
                   <th className="pb-3 md:pb-4">Sales</th>
                   <th className="pb-3 md:pb-4">Stock</th>
                   <th className="pb-3 md:pb-4 text-right">Status</th>
@@ -450,7 +450,7 @@ export default function Dashboard({
               className="bg-white rounded-2xl p-6 w-full max-w-[500px] shadow-2xl relative"
             >
               <h3 className="font-display text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-3">
-                Optical Supply Logs
+                Supply Logs
               </h3>
               <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
                 {activities.map((a) => (
@@ -488,10 +488,10 @@ export default function Dashboard({
                 AI Market Insights Module
               </h3>
               <p className="text-sm text-slate-500 max-w-[340px] mx-auto leading-relaxed">
-                Our AI model is currently training on your client purchase history to generate customizable smart suggestions for frame designs matching local trends!
+                Our AI model is currently training on your client purchase history to generate customizable product recommendations matching local trends!
               </p>
               <div className="bg-primary/5 rounded-xl p-4 border border-primary/10 text-xs font-bold text-primary max-w-[360px] mx-auto">
-                ✨ Suggested Style Next Week: Geometric Blue Light frames crafted in Acetate.
+                ✨ Suggested Style Next Week: A sleek hybrid collection of smart accessories and premium gear.
               </div>
               <button 
                 onClick={() => setShowInsightsModal(false)}

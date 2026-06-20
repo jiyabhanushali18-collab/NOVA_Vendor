@@ -33,10 +33,7 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
     // Category check
     const matchesCategory = 
       selectedCategory === 'All Categories' || 
-      product.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-      (selectedCategory === 'Luxury Aviators' && product.category === 'Luxury Aviators') ||
-      (selectedCategory === 'Blue Light' && product.category === 'Blue Light') ||
-      (selectedCategory === 'Sport' && product.category === 'Sport');
+      product.category.toLowerCase() === selectedCategory.toLowerCase();
 
     // Status check
     let matchesStatus = true;
@@ -87,8 +84,10 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
               className="bg-transparent border-none text-xs font-bold text-slate-600 focus:outline-none focus:ring-0 cursor-pointer"
             >
               <option>All Categories</option>
-              <option value="Luxury Aviators">Luxury Aviators</option>
-              <option value="Blue Light">Blue Light</option>
+              <option value="General">General</option>
+              <option value="Electronics">Electronics</option>
+              <option value="Accessories">Accessories</option>
+              <option value="Apparel">Apparel</option>
               <option value="Sport">Sport</option>
             </select>
           </div>
@@ -239,7 +238,7 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
                 ) : (
                   <tr>
                     <td colSpan={6} className="p-10 text-center text-slate-400 font-medium">
-                      No optical products found matching the filters.
+                      No products found matching the filters.
                     </td>
                   </tr>
                 )}
