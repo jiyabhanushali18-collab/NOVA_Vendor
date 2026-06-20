@@ -10,6 +10,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatRupees, formatRupeesCompact } from '../utils/currency';
 
 export default function Analytics() {
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
@@ -19,14 +20,14 @@ export default function Analytics() {
 
   // Month values for the bar chart
   const barData = [
-    { label: 'JAN', height: '40%', value: '$180k', color: '#ab8ffe' },
-    { label: 'FEB', height: '55%', value: '$240k', color: '#ab8ffe' },
-    { label: 'MAR', height: '75%', value: '$320k', color: '#ab8ffe' },
-    { label: 'APR', height: '60%', value: '$290k', color: '#ab8ffe' },
-    { label: 'MAY', height: '85%', value: '$390k', color: '#ab8ffe' },
-    { label: 'JUN', height: '95%', value: '$450k', color: '#451ebb' },
-    { label: 'JUL', height: '70%', value: '$310k', color: '#ab8ffe' },
-    { label: 'AUG', height: '65%', value: '$280k', color: '#ab8ffe' }
+    { label: 'JAN', height: '40%', value: formatRupeesCompact(180000), color: '#ab8ffe' },
+    { label: 'FEB', height: '55%', value: formatRupeesCompact(240000), color: '#ab8ffe' },
+    { label: 'MAR', height: '75%', value: formatRupeesCompact(320000), color: '#ab8ffe' },
+    { label: 'APR', height: '60%', value: formatRupeesCompact(290000), color: '#ab8ffe' },
+    { label: 'MAY', height: '85%', value: formatRupeesCompact(390000), color: '#ab8ffe' },
+    { label: 'JUN', height: '95%', value: formatRupeesCompact(450000), color: '#451ebb' },
+    { label: 'JUL', height: '70%', value: formatRupeesCompact(310000), color: '#ab8ffe' },
+    { label: 'AUG', height: '65%', value: formatRupeesCompact(280000), color: '#ab8ffe' }
   ];
 
   const handleExport = () => {
@@ -81,7 +82,7 @@ export default function Analytics() {
         <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl border border-slate-200/50 flex flex-col justify-between h-32 hover:translate-y-[-2px] transition-all duration-300">
           <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest font-display">TOTAL REVENUE</p>
           <div className="flex items-end justify-between mt-2">
-            <p className="font-display text-3xl font-extrabold text-slate-800">$2.4M</p>
+            <p className="font-display text-3xl font-extrabold text-slate-800">{formatRupeesCompact(2400000)}</p>
             <span className="text-primary font-bold text-xs flex items-center gap-1 bg-primary/5 px-2 py-0.5 rounded-full">
               +12.5% <TrendingUp className="w-3.5 h-3.5" />
             </span>
@@ -114,7 +115,7 @@ export default function Analytics() {
         <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl border border-slate-200/50 flex flex-col justify-between h-32 hover:translate-y-[-2px] transition-all duration-300">
           <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest font-display">AVG ORDER VALUE</p>
           <div className="flex items-end justify-between mt-2">
-            <p className="font-display text-3xl font-extrabold text-slate-800">$1,860</p>
+            <p className="font-display text-3xl font-extrabold text-slate-800">{formatRupees(1860)}</p>
             <span className="text-primary font-bold text-xs flex items-center gap-1 bg-primary/5 px-2 py-0.5 rounded-full">
               +5.1% <TrendingUp className="w-3.5 h-3.5" />
             </span>
@@ -315,7 +316,7 @@ export default function Analytics() {
                     <span className="text-xs font-semibold text-slate-400">High Demand</span>
                   </div>
                 </td>
-                <td className="py-4 font-bold text-primary tracking-tight text-right block md:table-cell">$420,600</td>
+                <td className="py-4 font-bold text-primary tracking-tight text-right block md:table-cell">{formatRupees(420600)}</td>
               </tr>
 
               {/* Product 2 */}
@@ -348,7 +349,7 @@ export default function Analytics() {
                     <span className="text-xs font-semibold text-slate-400">Restock Soon</span>
                   </div>
                 </td>
-                <td className="py-4 font-bold text-primary tracking-tight text-right block md:table-cell">$294,600</td>
+                <td className="py-4 font-bold text-primary tracking-tight text-right block md:table-cell">{formatRupees(294600)}</td>
               </tr>
             </tbody>
           </table>

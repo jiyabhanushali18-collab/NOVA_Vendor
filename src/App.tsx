@@ -19,6 +19,118 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const LOCAL_AUTH_SESSION_KEY = 'nova-local-auth-session';
 const LOCAL_AUTH_REMEMBER_KEY = 'nova-local-auth-remember';
+const LOCAL_AUTH_PROFILE_KEY = 'nova-local-auth-profile';
+
+const readLocalProfile = () => {
+  try {
+    const value = window.localStorage.getItem(LOCAL_AUTH_PROFILE_KEY);
+    return value ? JSON.parse(value) as ProfileInfo : null;
+  } catch {
+    return null;
+  }
+};
+
+const readNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number(value.replace(/[^0-9.-]/g, ''));
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+};
+
+const keyLooksLikePrice = (key: string) => {
+  const normalizedKey = key.toLowerCase().replace(/[^a-z]/g, '');
+  return normalizedKey.includes('price')
+    || normalizedKey.includes('mrp')
+    || normalizedKey.includes('amount')
+    || normalizedKey.includes('cost')
+    || normalizedKey.includes('rate');
+};
+
+const readFirstPositiveNumber = (value: unknown): number => {
+  const directNumber = readNumber(value);
+  if (directNumber > 0) {
+    return directNumber;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return 0;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nestedNumber = readFirstPositiveNumber(item);
+      if (nestedNumber > 0) {
+        return nestedNumber;
+      }
+    }
+
+    return 0;
+  }
+
+  for (const fieldValue of Object.values(value)) {
+    const nestedNumber = readFirstPositiveNumber(fieldValue);
+    if (nestedNumber > 0) {
+      return nestedNumber;
+    }
+  }
+
+  return 0;
+};
+
+const readNestedPrice = (value: unknown): number => {
+  if (!value || typeof value !== 'object') {
+    return 0;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nestedPrice = readNestedPrice(item);
+      if (nestedPrice > 0) {
+        return nestedPrice;
+      }
+    }
+
+    return 0;
+  }
+
+  for (const [key, fieldValue] of Object.entries(value)) {
+    if (keyLooksLikePrice(key)) {
+      const price = readFirstPositiveNumber(fieldValue);
+      if (price > 0) {
+        return price;
+      }
+    }
+
+    if (fieldValue && typeof fieldValue === 'object') {
+      const nestedPrice = readNestedPrice(fieldValue);
+      if (nestedPrice > 0) {
+        return nestedPrice;
+      }
+    }
+  }
+
+  return 0;
+};
+
+const readString = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+};
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -37,6 +149,10 @@ export default function App() {
         || (rememberedLocalSession && !!window.localStorage.getItem(LOCAL_AUTH_SESSION_KEY));
 
       if (user || hasLocalSession) {
+        const localProfile = readLocalProfile();
+        if (localProfile) {
+          setProfileInfo(localProfile);
+        }
         setIsLoggedIn(true);
         return;
       }
@@ -67,22 +183,50 @@ export default function App() {
         const snapshot = await getDocs(q);
         const items: Product[] = snapshot.docs.map(doc => {
           const data: any = doc.data();
+          const price = readNumber(
+            data.price,
+            data.sellingPrice,
+            data.salePrice,
+            data.retailPrice,
+            data.mrp,
+            data.MRP,
+            data.priceInRupees,
+            data.amount
+          ) || readNestedPrice(data);
+          const stock = readNumber(data.stock, data.quantity, data.availableStock, data.units);
+          const rating = readNumber(data.rating, data.averageRating, data.avgRating, data.productRating);
+          const ratingCount = readNumber(data.ratingCount, data.reviewCount, data.reviewsCount, data.totalReviews);
+          const arTryOnRating = readNumber(data.arTryOnRating, data.arRating, data.tryOnRating, data.arTryOn?.rating);
+          const arTryOnRatingCount = readNumber(
+            data.arTryOnRatingCount,
+            data.arRatingCount,
+            data.tryOnRatingCount,
+            data.arTryOn?.ratingCount
+          );
+          const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+
           return {
             id: doc.id,
-            name: data.name || '',
-            brand: data.brand || '',
-            category: data.category || 'Uncategorized',
-            price: Number(data.price) || 0,
-            stock: Number(data.stock) || 0,
-            color: data.color || '',
-            description: data.description || '',
-            imageUrl: data.imageUrl || '',
-            status: (Number(data.stock) > 0) ? (Number(data.stock) < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
+            name: readString(data.name, data.productName, data.title),
+            brand: readString(data.brand, data.companyName, data.vendorName) || 'Unbranded',
+            category: readString(data.category, data.productCategory, data.type) || 'Uncategorized',
+            price,
+            stock,
+            color: readString(data.color, data.colour),
+            description: readString(data.description, data.details),
+            imageUrl: readString(data.imageUrl, data.image, data.photoUrl, data.thumbnailUrl)
+              || `https://ui-avatars.com/api/?name=${encodeURIComponent(readString(data.name, data.productName, data.title) || 'Product')}&background=e2d9ff&color=451ebb&bold=true`,
+            status: stock > 0 ? (stock < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
             frameShape: data.frameShape,
             material: data.material,
             gender: data.gender,
-            sku: data.sku,
-            faceShapes: data.faceShapes || []
+            sku: readString(data.sku, data.vendorId, data.productId),
+            faceShapes: data.faceShapes || [],
+            rating,
+            ratingCount,
+            arTryOnRating,
+            arTryOnRatingCount,
+            reviews
           } as Product;
         });
         setProducts(items);
@@ -96,7 +240,66 @@ export default function App() {
     loadProducts();
   }, [isLoggedIn]);
 
-  const handleLoginSuccess = (email: string) => {
+  // Realtime reviews listener — keeps product ratings & reviews in sync
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let unsubscribe: (() => void) | undefined;
+
+    const listenReviews = async () => {
+      try {
+        const { collection, onSnapshot } = await import('firebase/firestore');
+        const { db } = await import('./firebase');
+
+        const reviewsCol = collection(db, 'reviews');
+        unsubscribe = onSnapshot(reviewsCol, (snapshot) => {
+          const byProduct: Record<string, any[]> = {};
+          snapshot.docs.forEach(doc => {
+            const d = doc.data() as any;
+            const pid = d.productId || d.product || 'unknown';
+            if (!byProduct[pid]) byProduct[pid] = [];
+            byProduct[pid].push({ id: doc.id, ...d });
+          });
+
+          // compute aggregates and merge into products
+          setProducts(prev => prev.map(p => {
+            const reviews = byProduct[p.id] || [];
+            const ratingSum = reviews.reduce((s, r) => s + (Number(r.rating) || 0), 0);
+            const arSum = reviews.reduce((s, r) => s + ((r.arTryOn ? Number(r.arRating || 0) : 0) || 0), 0);
+            const ratingCount = reviews.filter(r => Number(r.rating) > 0).length;
+            const arCount = reviews.filter(r => r.arTryOn && Number(r.arRating) > 0).length;
+
+            return {
+              ...p,
+              reviews: reviews as any,
+              rating: ratingCount ? +(ratingSum / ratingCount).toFixed(2) : 0,
+              ratingCount,
+              arTryOnRating: arCount ? +(arSum / arCount).toFixed(2) : 0,
+              arTryOnRatingCount: arCount
+            } as Product;
+          }));
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to listen to reviews', err);
+      }
+    };
+
+    listenReviews();
+
+    return () => unsubscribe && unsubscribe();
+  }, [isLoggedIn]);
+
+  const handleLoginSuccess = (email: string, profile?: ProfileInfo) => {
+    if (profile) {
+      setProfileInfo(profile);
+    } else {
+      const localProfile = readLocalProfile();
+      if (localProfile) {
+        setProfileInfo(localProfile);
+      }
+    }
+
     setIsLoggedIn(true);
     // Add dynamic activity indicating login
     setActivities(prev => [
@@ -104,11 +307,34 @@ export default function App() {
         id: 'login-' + Date.now(),
         type: 'verification',
         title: 'Partner Signed In',
-        description: `Successfully signed in as Alexander Vance`,
+        description: `Successfully signed in as ${profile?.ownerName ?? readLocalProfile()?.ownerName ?? email}`,
         time: 'Just now'
       },
       ...prev
     ]);
+  };
+
+  // Submit a review to Firestore (realtime)
+  const handleSubmitReview = async (productId: string, payload: { rating: number; comment?: string; author?: string; arTryOn?: boolean; arRating?: number; }) => {
+    try {
+      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+      const { db } = await import('./firebase');
+      const reviewsCol = collection(db, 'reviews');
+      await addDoc(reviewsCol, {
+        productId,
+        rating: payload.rating || 0,
+        comment: payload.comment || '',
+        author: payload.author || 'Anonymous',
+        arTryOn: !!payload.arTryOn,
+        arRating: payload.arRating || 0,
+        createdAt: serverTimestamp()
+      });
+      return true;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to submit review', err);
+      return false;
+    }
   };
 
   const handleLogout = async () => {
@@ -120,6 +346,7 @@ export default function App() {
     }
     window.localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
     window.localStorage.removeItem(LOCAL_AUTH_REMEMBER_KEY);
+    window.localStorage.removeItem(LOCAL_AUTH_PROFILE_KEY);
     window.sessionStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
     setIsLoggedIn(false);
     setActiveTab('dashboard');
@@ -127,7 +354,15 @@ export default function App() {
 
   const handleAddProduct = (newProd: Omit<Product, 'id'>) => {
     const id = newProd.name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(Math.random() * 100);
-    const completedProduct: Product = { ...newProd, id };
+    const completedProduct: Product = {
+      ...newProd,
+      id,
+      rating: newProd.rating ?? 0,
+      ratingCount: newProd.ratingCount ?? 0,
+      arTryOnRating: newProd.arTryOnRating ?? 0,
+      arTryOnRatingCount: newProd.arTryOnRatingCount ?? 0,
+      reviews: newProd.reviews ?? []
+    };
     
     // Add to list
     setProducts(prev => [completedProduct, ...prev]);
@@ -284,6 +519,7 @@ export default function App() {
               setProducts={setProducts}
               setActiveTab={handleTabChange}
               onEditProduct={handleEditTrigger}
+              onSubmitReview={handleSubmitReview}
             />
           )}
 

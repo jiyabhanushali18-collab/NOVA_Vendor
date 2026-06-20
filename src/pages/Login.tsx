@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck, Globe, Loader2, ArrowRight } from 'lucide-react';
+import { Building, Hash, Mail, Lock, Eye, EyeOff, ShieldCheck, Globe, Loader2, ArrowRight, MapPin, Phone, User } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
   browserLocalPersistence,
@@ -9,19 +9,31 @@ import {
   signInWithEmailAndPassword
 } from 'firebase/auth';
 import { auth } from '../firebase';
+import { ProfileInfo } from '../types';
 
 interface LoginProps {
-  onLoginSuccess: (email: string) => void;
+  onLoginSuccess: (email: string, profile?: ProfileInfo) => void;
 }
 
 type LocalUser = {
   email: string;
   password: string;
+  vendorDetails?: VendorSignupDetails;
+};
+
+type VendorSignupDetails = {
+  companyName: string;
+  ownerName: string;
+  gstNumber: string;
+  phoneNumber: string;
+  businessAddress: string;
+  vendorId: string;
 };
 
 const LOCAL_AUTH_USERS_KEY = 'nova-local-auth-users';
 const LOCAL_AUTH_SESSION_KEY = 'nova-local-auth-session';
 const LOCAL_AUTH_REMEMBER_KEY = 'nova-local-auth-remember';
+const LOCAL_AUTH_PROFILE_KEY = 'nova-local-auth-profile';
 const DEMO_EMAIL = 'name@company.com';
 const DEMO_PASSWORD = 'password123';
 
@@ -73,6 +85,21 @@ const writeLocalUsers = (users: LocalUser[]) => {
   window.localStorage.setItem(LOCAL_AUTH_USERS_KEY, JSON.stringify(users));
 };
 
+const buildProfileFromVendorDetails = (details: VendorSignupDetails): ProfileInfo => ({
+  storeName: details.companyName,
+  ownerName: details.ownerName,
+  gstNumber: details.gstNumber,
+  contactDetails: details.phoneNumber,
+  businessAddress: details.businessAddress,
+  logoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(details.companyName)}&background=451ebb&color=fff&bold=true`,
+  status: 'PENDING',
+  memberSince: new Date().toLocaleString('en-US', { month: 'short', year: 'numeric' })
+});
+
+const writeLocalProfile = (profile: ProfileInfo) => {
+  window.localStorage.setItem(LOCAL_AUTH_PROFILE_KEY, JSON.stringify(profile));
+};
+
 const completeLocalSignIn = (userEmail: string, shouldRemember: boolean) => {
   const sessionStore = shouldRemember ? window.localStorage : window.sessionStorage;
 
@@ -88,13 +115,16 @@ const signInLocally = (userEmail: string, userPassword: string, shouldRemember: 
   const localUser = readLocalUsers().find(user => user.email === normalizedEmail);
 
   if (localUser?.password === userPassword || (normalizedEmail === DEMO_EMAIL && userPassword === DEMO_PASSWORD)) {
+    if (localUser?.vendorDetails) {
+      writeLocalProfile(buildProfileFromVendorDetails(localUser.vendorDetails));
+    }
     return completeLocalSignIn(normalizedEmail, shouldRemember);
   }
 
   throw new Error('The email or password is incorrect.');
 };
 
-const signUpLocally = (userEmail: string, userPassword: string, shouldRemember: boolean) => {
+const signUpLocally = (userEmail: string, userPassword: string, shouldRemember: boolean, vendorDetails: VendorSignupDetails) => {
   const normalizedEmail = userEmail.trim().toLowerCase();
   const users = readLocalUsers();
 
@@ -102,7 +132,8 @@ const signUpLocally = (userEmail: string, userPassword: string, shouldRemember: 
     throw new Error('An account already exists for this email. Try logging in instead.');
   }
 
-  writeLocalUsers([...users, { email: normalizedEmail, password: userPassword }]);
+  writeLocalUsers([...users, { email: normalizedEmail, password: userPassword, vendorDetails }]);
+  writeLocalProfile(buildProfileFromVendorDetails(vendorDetails));
   return completeLocalSignIn(normalizedEmail, shouldRemember);
 };
 
@@ -114,8 +145,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
+  const [vendorDetails, setVendorDetails] = useState<VendorSignupDetails>({
+    companyName: 'Trendy Threads',
+    ownerName: 'Rahul Shah',
+    gstNumber: '27ABCDE1234F1Z5',
+    phoneNumber: '9876543210',
+    businessAddress: 'Mumbai, Maharashtra',
+    vendorId: 'VEN001'
+  });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  const updateVendorDetails = (field: keyof VendorSignupDetails, value: string) => {
+    setVendorDetails(prev => ({ ...prev, [field]: value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +168,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     if (password.length < 6) {
       setError('Use a password with at least 6 characters.');
       return;
+    }
+
+    if (mode === 'signup') {
+      const missingVendorField = Object.values(vendorDetails).some(value => value.trim().length === 0);
+
+      if (missingVendorField) {
+        setError('Please fill in all vendor credentials.');
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -139,22 +191,23 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       } else {
         const credential = await createUserWithEmailAndPassword(auth, userEmail, password);
         userEmail = credential.user.email || userEmail;
+        writeLocalProfile(buildProfileFromVendorDetails(vendorDetails));
       }
 
       setIsSuccess(true);
       setTimeout(() => {
-        onLoginSuccess(userEmail);
+        onLoginSuccess(userEmail, mode === 'signup' ? buildProfileFromVendorDetails(vendorDetails) : undefined);
       }, 800);
     } catch (err) {
       try {
         const userEmail = mode === 'login'
           ? signInLocally(email, password, keepSignedIn)
-          : signUpLocally(email, password, keepSignedIn);
+          : signUpLocally(email, password, keepSignedIn, vendorDetails);
 
         setNotice('Using local demo authentication because Firebase rejected the request.');
         setIsSuccess(true);
         setTimeout(() => {
-          onLoginSuccess(userEmail);
+          onLoginSuccess(userEmail, mode === 'signup' ? buildProfileFromVendorDetails(vendorDetails) : undefined);
         }, 800);
       } catch {
         setError(getAuthErrorMessage(err));
@@ -249,6 +302,118 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 </button>
               </div>
             </div>
+
+            {mode === 'signup' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <label htmlFor="companyName" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Company Name
+                  </label>
+                  <div className="relative group">
+                    <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors duration-200" />
+                    <input
+                      id="companyName"
+                      type="text"
+                      value={vendorDetails.companyName}
+                      onChange={(e) => updateVendorDetails('companyName', e.target.value)}
+                      placeholder="Trendy Threads"
+                      required
+                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="ownerName" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Owner Name
+                  </label>
+                  <div className="relative group">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors duration-200" />
+                    <input
+                      id="ownerName"
+                      type="text"
+                      value={vendorDetails.ownerName}
+                      onChange={(e) => updateVendorDetails('ownerName', e.target.value)}
+                      placeholder="Rahul Shah"
+                      required
+                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="vendorId" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Vendor ID
+                  </label>
+                  <div className="relative group">
+                    <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors duration-200" />
+                    <input
+                      id="vendorId"
+                      type="text"
+                      value={vendorDetails.vendorId}
+                      onChange={(e) => updateVendorDetails('vendorId', e.target.value)}
+                      placeholder="VEN001"
+                      required
+                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="gstNumber" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    GST Number
+                  </label>
+                  <div className="relative group">
+                    <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors duration-200" />
+                    <input
+                      id="gstNumber"
+                      type="text"
+                      value={vendorDetails.gstNumber}
+                      onChange={(e) => updateVendorDetails('gstNumber', e.target.value)}
+                      placeholder="27ABCDE1234F1Z5"
+                      required
+                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="phoneNumber" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Phone Number
+                  </label>
+                  <div className="relative group">
+                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors duration-200" />
+                    <input
+                      id="phoneNumber"
+                      type="tel"
+                      value={vendorDetails.phoneNumber}
+                      onChange={(e) => updateVendorDetails('phoneNumber', e.target.value)}
+                      placeholder="9876543210"
+                      required
+                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <label htmlFor="businessAddress" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Business Address
+                  </label>
+                  <div className="relative group">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors duration-200" />
+                    <input
+                      id="businessAddress"
+                      type="text"
+                      value={vendorDetails.businessAddress}
+                      onChange={(e) => updateVendorDetails('businessAddress', e.target.value)}
+                      placeholder="Mumbai, Maharashtra"
+                      required
+                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Keep Signed In toggle */}
             <div className="flex items-center">

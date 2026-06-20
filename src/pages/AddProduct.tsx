@@ -5,7 +5,7 @@ import {
   Upload, 
   Trash2, 
   Plus, 
-  DollarSign, 
+  IndianRupee, 
   Eye, 
   AlertTriangle,
   Boxes,
@@ -221,15 +221,15 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
           <div className="bg-white/60 backdrop-blur-md rounded-2xl p-6 border border-slate-200/50">
             <div className="flex items-center gap-3 mb-6">
               <span className="p-1.5 bg-primary/10 rounded-lg text-primary">
-                <DollarSign className="w-4 h-4" />
+                <IndianRupee className="w-4 h-4" />
               </span>
               <h2 className="font-display text-base font-bold text-slate-800">Pricing</h2>
             </div>
             
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">RETAIL PRICE (USD)</label>
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">RETAIL PRICE (INR)</label>
               <div className="relative group">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 group-focus-within:text-primary transition-colors">$</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 group-focus-within:text-primary transition-colors">₹</span>
                 <input 
                   type="number"
                   value={price || ''}

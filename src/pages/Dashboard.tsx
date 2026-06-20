@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Product, Order, Activity, ProfileInfo } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatRupeesCompact } from '../utils/currency';
 
 interface DashboardProps {
   products: Product[];
@@ -47,12 +48,12 @@ export default function Dashboard({
 
   // Revenue graph path info
   const points1 = [
-    { x: 40, y: 220, label: 'Day 5', val1: '$12k', val2: '$8k' },
-    { x: 160, y: 190, label: 'Day 10', val1: '$18k', val2: '$11k' },
-    { x: 280, y: 210, label: 'Day 15', val1: '$15k', val2: '$13k' },
-    { x: 400, y: 130, label: 'Day 20', val1: '$32k', val2: '$17k' },
-    { x: 520, y: 170, label: 'Day 25', val1: '$24k', val2: '$21k' },
-    { x: 640, y: 70, label: 'Day 30', val1: '$42k', val2: '$24k' }
+    { x: 40, y: 220, label: 'Day 5', val1: '₹12k', val2: '₹8k' },
+    { x: 160, y: 190, label: 'Day 10', val1: '₹18k', val2: '₹11k' },
+    { x: 280, y: 210, label: 'Day 15', val1: '₹15k', val2: '₹13k' },
+    { x: 400, y: 130, label: 'Day 20', val1: '₹32k', val2: '₹17k' },
+    { x: 520, y: 170, label: 'Day 25', val1: '₹24k', val2: '₹21k' },
+    { x: 640, y: 70, label: 'Day 30', val1: '₹42k', val2: '₹24k' }
   ];
 
   return (
@@ -131,7 +132,7 @@ export default function Dashboard({
           </div>
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest font-display">Revenue</p>
           <h3 className="font-display text-3xl font-extrabold mt-1 text-slate-800">
-            ${(calculatedRevenue / 1000).toFixed(1)}k
+            {formatRupeesCompact(calculatedRevenue)}
           </h3>
           <div className="w-full h-1 bg-slate-100 rounded-full mt-4 overflow-hidden">
             <div className="h-full bg-amber-500 w-2/3 rounded-full"></div>
@@ -180,11 +181,11 @@ export default function Dashboard({
           <div className="flex-1 w-full relative group/chart mt-4">
             {/* Y axis lines */}
             <div className="absolute inset-x-0 inset-y-0 flex flex-col justify-between text-[10px] font-bold text-slate-300 pointer-events-none select-none z-0">
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>$50k</span></div>
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>$40k</span></div>
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>$30k</span></div>
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>$20k</span></div>
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>$10k</span></div>
+              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹50k</span></div>
+              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹40k</span></div>
+              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹30k</span></div>
+              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹20k</span></div>
+              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹10k</span></div>
               <div className="flex justify-between"><span>0</span></div>
             </div>
 

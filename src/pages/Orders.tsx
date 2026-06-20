@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Order } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatRupees, formatRupeesCompact } from '../utils/currency';
 
 interface OrdersProps {
   orders: Order[];
@@ -260,7 +261,7 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
                           {order.quantity} {order.quantity === 1 ? 'Unit' : 'Units'}
                         </td>
                         <td className="px-6 py-4.5 font-bold text-slate-800 text-xs">
-                          ${order.amount.toFixed(2)}
+                          {formatRupees(order.amount)}
                         </td>
                         <td className="px-6 py-4.5 text-slate-400 font-bold text-xs whitespace-nowrap">
                           {order.date}
@@ -360,7 +361,7 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
             <span className="text-primary font-bold text-xs bg-primary/5 px-2 py-0.5 rounded-full">+12.5%</span>
           </div>
           <h3 className="text-slate-400 font-bold font-display text-[10px] mb-1 uppercase tracking-widest leading-none">Net Volume</h3>
-          <p className="font-display text-3xl font-extrabold text-primary">$42.8k</p>
+          <p className="font-display text-3xl font-extrabold text-primary">{formatRupeesCompact(42800)}</p>
         </div>
 
         {/* Stat Active shipments */}
@@ -445,7 +446,7 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Amount ($)</label>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Amount (₹)</label>
                     <input 
                       type="number" 
                       min={1}

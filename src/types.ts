@@ -14,6 +14,19 @@ export interface Product {
   gender?: string;
   sku?: string;
   faceShapes?: string[];
+  rating?: number;
+  ratingCount?: number;
+  arTryOnRating?: number;
+  arTryOnRatingCount?: number;
+  reviews?: ProductReview[];
+}
+
+export interface ProductReview {
+  id: string;
+  author: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
 }
 
 export interface Order {
