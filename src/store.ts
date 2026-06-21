@@ -16,7 +16,7 @@ export const initialProducts: Product[] = [
     material: 'Titanium',
     gender: 'Unisex',
     sku: 'NV-8829',
-    faceShapes: ['Oval', 'Heart']
+    variants: [{ color: 'Sleek Silver', images: ['https://lh3.googleusercontent.com/aida-public/AB6AXuAROr2ehHgAsWyqikChT6fcEywOSxxxNK5j7Yf1lrnJ2uiwmZLBrSTsO-gmN6nlrU07rtusufu_PYjqPrDYUoNADV26mIAFdd_16zGLFYLAUM4Iqip_93clb_-0-3bKj3MlXR4jeng8cHEqteBrEacGjFXRi3EkPGY8WAgh2d1BuDwgaCEoSCwfUygs-61L7-tEFV1JbzwRpdQBLiKGIRK-Lzyrr2h1efCh_Bx-YBSv4vRqvZ68w9LadHieG6kVA4SIxMyDMOrhUKk'] }]
   },
   {
     id: 'classic-acetate-dark',
@@ -33,7 +33,7 @@ export const initialProducts: Product[] = [
     material: 'Acetate',
     gender: 'Unisex',
     sku: 'NV-3310',
-    faceShapes: ['Round', 'Oval', 'Heart']
+    variants: [{ color: 'Tortoise Shell', images: ['https://lh3.googleusercontent.com/aida-public/AB6AXuABhph-FHv2nJoFbamC_4d263hQHkQj_H3Cmd5_IgHjm5L6Ky2X3gvCXxzxB7SyrpeI2uP8a6U5fOKezq11cq-CJq9jJ974swvmEY8D_U12WzdQOFvyNS7Xnl7amu5BUSGNPbiHoPVv6XdILgXI52hv7AUitbjT2pHxMGT0wjGSBi4EUvZghMzgQV4mEOF8bEKROdqvSnCnJO2wAWc4eI43DUitUKE78ws3pPbEJjOjLGSaCYDpv_DiGcmWhwaIdDMMyNKgWIcvF8A'] }]
   },
   {
     id: 'eclipse-prime',
@@ -50,7 +50,7 @@ export const initialProducts: Product[] = [
     material: 'Stainless Steel',
     gender: 'Unisex',
     sku: 'NS-0912',
-    faceShapes: ['Square', 'Oval']
+    variants: [{ color: 'Classic Gold', images: ['https://lh3.googleusercontent.com/aida-public/AB6AXuBO8dNctqi0O4hiy2Dyw2xF2XHM81fsJ54k_e5mTHZ29sY4jv4LxoX5gLoyUanryk2bcyUVgR_fvm5y8XJzd0qnJ7CUzrsiajUMHDTRcECzRYroMq3L8wJBFtoTWAbaiW9qRUE6Hbpbk6JC5rEUqZW2Nb2dG4LxXmqZYdET8IHLUkhjvKiUHdEN2eIbaJKB0Oktls6HbAtAV7NFUAbpolEwZZIYGXNk6o2ThdvGE8ZvKIQEX0q6WVgl9o084ZyT7abUvJA9jOigSd8'] }]
   },
   {
     id: 'digital-clarity-plus',
@@ -67,7 +67,7 @@ export const initialProducts: Product[] = [
     material: 'Bio-Resin',
     gender: 'Unisex',
     sku: 'NS-5512',
-    faceShapes: ['Square', 'Diamond']
+    variants: [{ color: 'Transparent Clear', images: ['https://lh3.googleusercontent.com/aida-public/AB6AXuA1gv7GCFFNqRDnQ87rhK7RPSOP_X_i8F7C2hWNft7W11Bw20xLQ7r7PH07_i4jhTgGUuxDTUqr4GyJjLXGA9Vnj7wyTdn5K8_XTwzfknEdr9aR34oc7v9F1r5IljSimOhFqxNX1IQsE18lUjuo0Mn42Lcmi5HnZBiOKwMISdxKVZN4c1E2RUfaMv8ciSSrgeeKMRtEqwbGoQW9n70mQ7DcZsg9Ke1M5mwd2W5aiQypot3nN9H7sBH_Ol7KNcdHD1lLMCRyC01maao'] }]
   },
   {
     id: 'onyx-night-shades',
@@ -84,7 +84,7 @@ export const initialProducts: Product[] = [
     material: 'Acetate',
     gender: 'Unisex',
     sku: 'NS-9821',
-    faceShapes: ['Round', 'Oval']
+    variants: [{ color: 'Deep Obsidian', images: ['https://lh3.googleusercontent.com/aida-public/AB6AXuCVF_jwupRutoNQ5XESTkuj2MBKjD8xrQboq4KljZAzWRu1RYgBcgzaWHRnfbnNED84BWuzvX51QuY-UcUIllNWSF1bnLGCRILBhBTmrPAuzd4wDVeSQWSYJ5r4QRDPxf8kIlq4An0W0hD3IQX_eL03W1pExJEHYBVWRogtrZADlOJGWEJdKNQuxD_STVIjPDeymgWucP4MCkzRItZruuB3KZd-KeUNS4nwumw4eqWqXGa6hJKMcA_o4HQsWEDOoybBeu96ccOmnjg'] }]
   },
   {
     id: 'active-fit-sport',
@@ -101,7 +101,7 @@ export const initialProducts: Product[] = [
     material: 'Bio-Resin',
     gender: 'Unisex',
     sku: 'NS-9921',
-    faceShapes: ['Oval', 'Diamond', 'Heart']
+    variants: [{ color: 'Polarized Orange', images: ['https://lh3.googleusercontent.com/aida-public/AB6AXuC2GzO_z9lj2Z7BYp0vZTCuD7bxnzHJ_jDYiQlENiObzclejpfK3yj9S5idxbQzqZaUflDZb4k2715Hl7gP294gAkj1P2oodG6yzrAWFuzgR3-aE4BLneRsf8aSeCzXK2RYDJJh4Yfazlvl7496zHnZaPqD6UhUvQaFYawJQPI_hRp-5Qk_KSGrwOui79lGIvgd5Dx3_1o1EloMOyWSgntM-3auzV4knmohYhAkmtlCgpy1UFz1D73PNrn9MNP7adZJqevRPtJDBvk'] }]
   }
 ];
 

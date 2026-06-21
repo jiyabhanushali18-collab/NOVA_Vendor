@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Info, 
   Image as ImageIcon, 
@@ -37,9 +37,15 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   const [gender, setGender] = useState(editingProduct?.gender || 'Unisex');
   const [variants, setVariants] = useState<ProductVariant[]>(() => {
     if (editingProduct?.variants && editingProduct.variants.length) return editingProduct.variants;
-    // default single variant using color and imageUrl
     return [{ color: editingProduct?.color || '', images: editingProduct?.imageUrl ? [editingProduct.imageUrl] : [] }];
   });
+  const [mainImages, setMainImages] = useState<string[]>(() => {
+    if (editingProduct?.variants && editingProduct.variants.length) {
+      return editingProduct.variants[0].images || [];
+    }
+    return editingProduct?.imageUrl ? [editingProduct.imageUrl] : [];
+  });
+  const mainInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -69,6 +75,19 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     setVariants(prev => prev.map((v, i) => i === index ? { ...v, images: [...v.images, ...urls] } : v));
   };
 
+  const updateMainImages = (files: FileList | null) => {
+    if (!files) return;
+    const urls: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      urls.push(URL.createObjectURL(f));
+    }
+    setMainImages(prev => [...prev, ...urls]);
+    if (mainInputRef.current) {
+      mainInputRef.current.value = '';
+    }
+  };
+
   const removeVariantImage = (vIndex: number, imgIndex: number) => {
     setVariants(prev => prev.map((v, i) => {
       if (i !== vIndex) return v;
@@ -84,12 +103,17 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
       return;
     }
 
+    const normalizedVariants = variants.length ? [...variants] : [{ color: color || 'Default', images: [] }];
+    if (normalizedVariants.length && normalizedVariants[0].images.length === 0 && mainImages.length) {
+      normalizedVariants[0].images = [...mainImages];
+    }
+
     // validate variants: at least one variant and each must have >=1 image
-    if (!variants || variants.length === 0) {
+    if (!normalizedVariants || normalizedVariants.length === 0) {
       alert('Please add at least one color variant with images.');
       return;
     }
-    for (const v of variants) {
+    for (const v of normalizedVariants) {
       if (!v.color || v.images.length === 0) {
         alert('Each variant must have a color name and at least one image.');
         return;
@@ -115,12 +139,12 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
         stock: Number(stock) || 50,
         status: (Number(stock) || 50) > 15 ? 'In Stock' as const : 'Low Stock' as const,
-        imageUrl: variants[0]?.images[0] || mockupGlintImage,
+        imageUrl: mainImages[0] || normalizedVariants[0]?.images[0] || mockupGlintImage,
         frameShape,
         material,
         gender,
         sku: 'NV-' + Math.floor(1000 + Math.random() * 9000),
-        variants,
+        variants: normalizedVariants,
       };
 
       if (editingProduct && onUpdateProduct) {
@@ -220,41 +244,66 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Upload Main placeholder */}
-            <div className="aspect-square rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/10 transition-all">
+            <label className="aspect-square rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/10 transition-all">
               <Upload className="w-6 h-6 text-primary mb-2" />
               <span className="text-[10px] uppercase font-bold tracking-wider text-primary/60">UPLOAD MAIN</span>
-            </div>
-
-            {/* Existing mock asset image 2 */}
-            <div className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
-              <img 
-                className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtMVlsRWdEW-pFyEO3U1hZmeAx-sIK5aHnPNfHs_ZxVKxYrdHeeO6AGJ0hEtLf_KoVgfJrVpTlZVgDQrt1LjKsjQUehidZvRfhmKVHgPdVgWzkXuFrMkzJoNy6k4qO2ZfPi6LWdLyjSVqmJ_dJSiL71zLrSKeRrhJj13a1z7pJNMXclUgouUPHH-EvRZwzKVUK8tAOEMnn3SdZ4R3SzcmdNSEbHQT5RkQj57Xs7gTe7HX7f7mongL_TZ8uuH8bOOQFICSz6GjyGp0" 
-                alt="Product sample 2" 
-                referrerPolicy="no-referrer"
+              <input
+                ref={mainInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={e => updateMainImages(e.target.files)}
               />
-              <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
-                <Trash2 className="w-5 h-5 text-red-500 hover:scale-110 transition-transform" />
-              </div>
-            </div>
+            </label>
 
-            {/* Existing mock asset image 3 */}
-            <div className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
-              <img 
-                className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuASB6mwCD-qC-PscxNz6BcA3TcYiQVfEBYXySBdUr7hq6LKxrttnUJ3z2WiBPId19N9UaZSLQGZ7Afv00M6WSjOrwRNPljqyogBprzm6kOUnhTF3coKQmaJNOQIsyXLc4rEvTaWeeHd5fEvZ39Zzo6PjiPE2KppVNT91IVztocbWpN_e-T4g1PQZJI3g5e_zxapnzhKRJWptO0IGyri9dfl5HSly3QiKEGQsZT5ydN3hKEJkY7ycMJwEhVSpCxCrTnw9W6tZGBZ3Lc" 
-                alt="Product sample 3" 
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
-                <Trash2 className="w-5 h-5 text-red-500 hover:scale-110 transition-transform" />
-              </div>
-            </div>
+            {mainImages.length ? (
+              mainImages.map((src, index) => (
+                <div key={index} className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
+                  <img className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" src={src} alt={`main-${index}`} />
+                  <button
+                    type="button"
+                    onClick={() => setMainImages(prev => prev.filter((_, i) => i !== index))}
+                    className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <>
+                {/* Existing mock asset image 2 */}
+                <div className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
+                  <img 
+                    className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" 
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtMVlsRWdEW-pFyEO3U1hZmeAx-sIK5aHnPNfHs_ZxVKxYrdHeeO6AGJ0hEtLf_KoVgfJrVpTlZVgDQrt1LjKsjQUehidZvRfhmKVHgPdVgWzkXuFrMkzJoNy6k4qO2ZfPi6LWdLyjSVqmJ_dJSiL71zLrSKeRrhJj13a1z7pJNMXclUgouUPHH-EvRZwzKVUK8tAOEMnn3SdZ4R3SzcmdNSEbHQT5RkQj57Xs7gTe7HX7f7mongL_TZ8uuH8bOOQFICSz6GjyGp0" 
+                    alt="Product sample 2" 
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
+                    <Trash2 className="w-5 h-5 text-red-500 hover:scale-110 transition-transform" />
+                  </div>
+                </div>
 
-            {/* Dash placeholder plus */}
-            <div className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 hover:border-slate-300 flex items-center justify-center cursor-pointer hover:bg-slate-50 duration-200">
-              <Plus className="w-6 h-6 text-slate-400" />
-            </div>
+                {/* Existing mock asset image 3 */}
+                <div className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
+                  <img 
+                    className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" 
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuASB6mwCD-qC-PscxNz6BcA3TcYiQVfEBYXySBdUr7hq6LKxrttnUJ3z2WiBPId19N9UaZSLQGZ7Afv00M6WSjOrwRNPljqyogBprzm6kOUnhTF3coKQmaJNOQIsyXLc4rEvTaWeeHd5fEvZ39Zzo6PjiPE2KppVNT91IVztocbWpN_e-T4g1PQZJI3g5e_zxapnzhKRJWptO0IGyri9dfl5HSly3QiKEGQsZT5ydN3hKEJkY7ycMJwEhVSpCxCrTnw9W6tZGBZ3Lc" 
+                    alt="Product sample 3" 
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
+                    <Trash2 className="w-5 h-5 text-red-500 hover:scale-110 transition-transform" />
+                  </div>
+                </div>
+
+                {/* Dash placeholder plus */}
+                <div className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 hover:border-slate-300 flex items-center justify-center hover:bg-slate-50 duration-200">
+                  <Plus className="w-6 h-6 text-slate-400" />
+                </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -416,7 +465,6 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
                       <input
                         type="file"
                         accept="image/*"
-                        capture
                         multiple
                         onChange={e => updateVariantImages(idx, e.target.files)}
                         className="hidden"
