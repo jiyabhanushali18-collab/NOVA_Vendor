@@ -8,7 +8,8 @@ import {
   setPersistence,
   signInWithEmailAndPassword
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ProfileInfo } from '../types';
 
 interface LoginProps {
@@ -87,6 +88,8 @@ const writeLocalUsers = (users: LocalUser[]) => {
 
 const buildProfileFromVendorDetails = (details: VendorSignupDetails): ProfileInfo => ({
   storeName: details.companyName,
+  companyName: details.companyName,
+  vendorId: details.vendorId,
   ownerName: details.ownerName,
   gstNumber: details.gstNumber,
   contactDetails: details.phoneNumber,
@@ -95,6 +98,29 @@ const buildProfileFromVendorDetails = (details: VendorSignupDetails): ProfileInf
   status: 'PENDING',
   memberSince: new Date().toLocaleString('en-US', { month: 'short', year: 'numeric' })
 });
+
+const writeVendorProfileToFirestore = async (uid: string, email: string, details: VendorSignupDetails, profile: ProfileInfo) => {
+  try {
+    await setDoc(doc(db, 'owner', uid), {
+      uid,
+      email,
+      vendorId: details.vendorId,
+      companyName: details.companyName,
+      ownerName: details.ownerName,
+      gstNumber: details.gstNumber,
+      contactDetails: details.phoneNumber,
+      businessAddress: details.businessAddress,
+      logoUrl: profile.logoUrl,
+      status: profile.status,
+      memberSince: profile.memberSince,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save vendor profile to Firestore', err);
+  }
+};
 
 const writeLocalProfile = (profile: ProfileInfo) => {
   window.localStorage.setItem(LOCAL_AUTH_PROFILE_KEY, JSON.stringify(profile));
@@ -191,7 +217,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       } else {
         const credential = await createUserWithEmailAndPassword(auth, userEmail, password);
         userEmail = credential.user.email || userEmail;
-        writeLocalProfile(buildProfileFromVendorDetails(vendorDetails));
+        const profile = buildProfileFromVendorDetails(vendorDetails);
+        writeLocalProfile(profile);
+        await writeVendorProfileToFirestore(credential.user.uid, userEmail, vendorDetails, profile);
       }
 
       setIsSuccess(true);

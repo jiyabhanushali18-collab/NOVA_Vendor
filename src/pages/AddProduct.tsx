@@ -15,7 +15,7 @@ import {
 import { Product, ProductVariant } from '../types';
 
 interface AddProductProps {
-  onAddProduct: (product: Omit<Product, 'id'>) => void;
+  onAddProduct: (product: Omit<Product, 'id'>) => Promise<void>;
   setActiveTab: (tab: string) => void;
   editingProduct?: Product | null;
   onUpdateProduct?: (product: Product) => void;
@@ -96,7 +96,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !brand) {
       alert("Please fill in the Product Name and Brand fields.");
@@ -124,7 +124,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
     const mockupGlintImage = 'https://lh3.googleusercontent.com/aida-public/AB6AXuAtMVlsRWdEW-pFyEO3U1hZmeAx-sIK5aHnPNfHs_ZxVKxYrdHeeO6AGJ0hEtLf_KoVgfJrVpTlZVgDQrt1LjKsjQUehidZvRfhmKVHgPdVgWzkXuFrMkzJoNy6k4qO2ZfPi6LWdLyjSVqmJ_dJSiL71zLrSKeRrhJj13a1z7pJNMXclUgouUPHH-EvRZwzKVUK8tAOEMnn3SdZ4R3SzcmdNSEbHQT5RkQj57Xs7gTe7HX7f7mongL_TZ8uuH8bOOQFICSz6GjyGp0';
 
-    setTimeout(() => {
+    setTimeout(async () => {
       setSaving(false);
       setSuccess(true);
 
@@ -153,7 +153,14 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
           ...productPayload
         });
       } else {
-        onAddProduct(productPayload);
+        try {
+          await onAddProduct(productPayload);
+        } catch (err) {
+          console.error('Failed to save product', err);
+          alert('Unable to save product. Please try again.');
+          setSaving(false);
+          return;
+        }
       }
 
       setTimeout(() => {

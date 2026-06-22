@@ -8,8 +8,7 @@ import {
   Edit, 
   Trash2, 
   ChevronLeft, 
-  ChevronRight,
-  Eye
+  ChevronRight
 } from 'lucide-react';
 import { Product } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -20,10 +19,9 @@ interface ProductsProps {
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setActiveTab: (tab: string) => void;
   onEditProduct?: (product: Product) => void;
-  onSubmitReview?: (productId: string, payload: { rating: number; comment?: string; author?: string; arTryOn?: boolean; arRating?: number; }) => Promise<boolean>;
 }
 
-export default function Products({ products, setProducts, setActiveTab, onEditProduct, onSubmitReview }: ProductsProps) {
+export default function Products({ products, setProducts, setActiveTab, onEditProduct }: ProductsProps) {
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [selectedStatus, setSelectedStatus] = useState('Status: All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,56 +67,6 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
     }
   };
 
-  const [reviewModalProduct, setReviewModalProduct] = useState<Product | null>(null);
-  const [newRating, setNewRating] = useState(5);
-  const [newComment, setNewComment] = useState('');
-  const [arTryOn, setArTryOn] = useState(false);
-
-  const openReviewModal = (p: Product) => {
-    setReviewModalProduct(p);
-    setNewRating(5);
-    setNewComment('');
-    setArTryOn(false);
-  };
-
-  const closeReviewModal = () => setReviewModalProduct(null);
-
-  const submitReview = async () => {
-    if (!reviewModalProduct) return;
-    if (!onSubmitReview) {
-      alert('Review submission not configured');
-      return;
-    }
-
-    const success = await onSubmitReview(reviewModalProduct.id, {
-      rating: newRating,
-      comment: newComment,
-      author: 'Vendor',
-      arTryOn,
-      arRating: arTryOn ? newRating : 0
-    });
-
-    if (success) {
-      closeReviewModal();
-    } else {
-      alert('Failed to submit review');
-    }
-  };
-
-  // Render ReviewModal inline so it has access to state vars
-  const reviewModal = (
-    <ReviewModal
-      product={reviewModalProduct}
-      rating={newRating}
-      setRating={setNewRating}
-      comment={newComment}
-      setComment={setNewComment}
-      arTryOn={arTryOn}
-      setArTryOn={setArTryOn}
-      onClose={closeReviewModal}
-      onSubmit={submitReview}
-    />
-  );
 
   return (
     <>
@@ -230,7 +178,6 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
                           <div className="min-w-0">
                             <div className="font-display font-bold text-slate-700 text-sm truncate">{product.name}</div>
                             <div className="text-xs text-slate-450 truncate font-semibold">{product.brand} {product.sku ? `(${product.sku})` : ''}</div>
-                            <div className="text-xs text-amber-600 font-bold mt-1">{product.rating ? product.rating + ' ★' : 'No rating yet'} · {product.ratingCount ?? 0} reviews</div>
                           </div>
                         </div>
                       </td>
@@ -281,14 +228,6 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
                             title="Edit"
                           >
                             <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openReviewModal(product)}
-                            className="p-1.5 hover:bg-primary/10 rounded-lg text-amber-600 duration-150 cursor-pointer"
-                            title="Add Review"
-                          >
-                            <Eye className="w-4 h-4" />
                           </button>
                           <button 
                             type="button"
@@ -351,70 +290,6 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
         </div>
       </div>
     </div>
-    {reviewModal}
     </>
-  );
-}
-
-// Note: lightweight modal markup appended at file end to avoid large edits above
-
-export function ReviewModal({
-  product,
-  rating,
-  setRating,
-  comment,
-  setComment,
-  arTryOn,
-  setArTryOn,
-  onClose,
-  onSubmit
-}: {
-  product: Product | null;
-  rating: number;
-  setRating: (v: number) => void;
-  comment: string;
-  setComment: (s: string) => void;
-  arTryOn: boolean;
-  setArTryOn: (b: boolean) => void;
-  onClose: () => void;
-  onSubmit: () => void;
-}) {
-  if (!product) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="bg-white rounded-2xl p-6 z-10 w-[min(720px,95%)]">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold">Add review for {product.name}</h3>
-          <button onClick={onClose} className="text-slate-500">Close</button>
-        </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-bold">Rating</label>
-            <div className="flex items-center gap-2 mt-2">
-              {[1,2,3,4,5].map(n => (
-                <button key={n} onClick={() => setRating(n)} className={`px-3 py-1 rounded ${rating===n? 'bg-amber-300' : 'bg-slate-100'}`}>{n} ★</button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold">Comment</label>
-            <textarea value={comment} onChange={e => setComment(e.target.value)} className="w-full mt-2 p-2 border rounded" />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input id="arTry" type="checkbox" checked={arTryOn} onChange={e => setArTryOn(e.target.checked)} />
-            <label htmlFor="arTry" className="text-sm">Rate AR try-on experience</label>
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <button onClick={onClose} className="px-4 py-2 bg-slate-100 rounded">Cancel</button>
-            <button onClick={onSubmit} className="px-4 py-2 bg-primary text-white rounded">Submit Review</button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }

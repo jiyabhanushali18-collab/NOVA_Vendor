@@ -13,6 +13,10 @@ export interface Product {
   material?: string;
   gender?: string;
   sku?: string;
+  vendorId?: string;
+  vendorName?: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
   // Variants: each variant has a color and multiple images (at least one)
   variants?: ProductVariant[];
   // Optional pricing: original was MRP, discounted is current sale price
@@ -61,6 +65,8 @@ export interface Activity {
 
 export interface ProfileInfo {
   storeName: string;
+  companyName?: string;
+  vendorId?: string;
   ownerName: string;
   gstNumber: string;
   contactDetails: string;

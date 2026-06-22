@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { initialProducts, initialOrders, initialActivities, initialProfile } from './store';
 import { Product, Order, Activity, ProfileInfo } from './types';
 import Sidebar from './components/Sidebar';
@@ -26,6 +26,34 @@ const readLocalProfile = () => {
     const value = window.localStorage.getItem(LOCAL_AUTH_PROFILE_KEY);
     return value ? JSON.parse(value) as ProfileInfo : null;
   } catch {
+    return null;
+  }
+};
+
+const fetchVendorProfile = async (uid: string): Promise<ProfileInfo | null> => {
+  try {
+    const { doc, getDoc } = await import('firebase/firestore');
+    // Fetch current vendor details from Firestore owner collection
+    const ownerDoc = await getDoc(doc(db, 'owner', uid));
+    if (!ownerDoc.exists()) {
+      return null;
+    }
+    const data = ownerDoc.data() as any;
+    return {
+      storeName: data.companyName || data.storeName || '',
+      companyName: data.companyName || data.storeName || '',
+      vendorId: data.vendorId,
+      ownerName: data.ownerName || '',
+      gstNumber: data.gstNumber || '',
+      contactDetails: data.contactDetails || '',
+      businessAddress: data.businessAddress || '',
+      logoUrl: data.logoUrl || '',
+      status: data.status || 'VERIFIED',
+      memberSince: data.memberSince || ''
+    };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to fetch vendor profile', err);
     return null;
   }
 };
@@ -152,6 +180,11 @@ export default function App() {
         const localProfile = readLocalProfile();
         if (localProfile) {
           setProfileInfo(localProfile);
+        } else if (user) {
+          const vendorProfile = await fetchVendorProfile(user.uid);
+          if (vendorProfile) {
+            setProfileInfo(vendorProfile);
+          }
         }
         setIsLoggedIn(true);
         return;
@@ -314,29 +347,6 @@ export default function App() {
     ]);
   };
 
-  // Submit a review to Firestore (realtime)
-  const handleSubmitReview = async (productId: string, payload: { rating: number; comment?: string; author?: string; arTryOn?: boolean; arRating?: number; }) => {
-    try {
-      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
-      const { db } = await import('./firebase');
-      const reviewsCol = collection(db, 'reviews');
-      await addDoc(reviewsCol, {
-        productId,
-        rating: payload.rating || 0,
-        comment: payload.comment || '',
-        author: payload.author || 'Anonymous',
-        arTryOn: !!payload.arTryOn,
-        arRating: payload.arRating || 0,
-        createdAt: serverTimestamp()
-      });
-      return true;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to submit review', err);
-      return false;
-    }
-  };
-
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -352,11 +362,17 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
-  const handleAddProduct = (newProd: Omit<Product, 'id'>) => {
+  const handleAddProduct = async (newProd: Omit<Product, 'id'>) => {
     const id = newProd.name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(Math.random() * 100);
+    const vendorId = profileInfo.vendorId;
+    const vendorName = profileInfo.companyName || profileInfo.storeName;
     const completedProduct: Product = {
       ...newProd,
       id,
+      vendorId,
+      vendorName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       rating: newProd.rating ?? 0,
       ratingCount: newProd.ratingCount ?? 0,
       arTryOnRating: newProd.arTryOnRating ?? 0,
@@ -364,7 +380,7 @@ export default function App() {
       reviews: newProd.reviews ?? []
     };
     
-    // Add to list
+    // Add to list immediately for UI responsiveness
     setProducts(prev => [completedProduct, ...prev]);
 
     // Create activity
@@ -378,6 +394,21 @@ export default function App() {
       },
       ...prev
     ]);
+
+    // Inject vendor metadata and save new product to Firestore using current logged-in vendor
+    try {
+      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+      await addDoc(collection(db, 'products'), {
+        ...newProd,
+        vendorId,
+        vendorName,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to save product to Firestore', err);
+    }
   };
 
   const handleUpdateProduct = (updatedProd: Product) => {
@@ -519,7 +550,6 @@ export default function App() {
               setProducts={setProducts}
               setActiveTab={handleTabChange}
               onEditProduct={handleEditTrigger}
-              onSubmitReview={handleSubmitReview}
             />
           )}
 
