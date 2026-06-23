@@ -16,12 +16,13 @@ import { formatRupees } from '../utils/currency';
 
 interface ProductsProps {
   products: Product[];
+  isLoading?: boolean;
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setActiveTab: (tab: string) => void;
   onEditProduct?: (product: Product) => void;
 }
 
-export default function Products({ products, setProducts, setActiveTab, onEditProduct }: ProductsProps) {
+export default function Products({ products, isLoading = false, setProducts, setActiveTab, onEditProduct }: ProductsProps) {
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [selectedStatus, setSelectedStatus] = useState('Status: All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,7 +155,13 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
             </thead>
             <tbody className="divide-y divide-slate-100">
               <AnimatePresence mode="popLayout">
-                {paginatedProducts.length > 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="p-10 text-center text-slate-400 font-medium">
+                      Loading products...
+                    </td>
+                  </tr>
+                ) : paginatedProducts.length > 0 ? (
                   paginatedProducts.map((product) => (
                     <motion.tr 
                       key={product.id}
@@ -244,7 +251,9 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
                 ) : (
                   <tr>
                     <td colSpan={6} className="p-10 text-center text-slate-400 font-medium">
-                      No products found matching the filters.
+                      {products.length === 0
+                        ? 'No active products in the catalog.'
+                        : 'No products found matching the filters.'}
                     </td>
                   </tr>
                 )}
@@ -256,7 +265,9 @@ export default function Products({ products, setProducts, setActiveTab, onEditPr
         {/* Pagination element */}
         <div className="p-5 flex items-center justify-between border-t border-slate-100 bg-white/20">
           <p className="text-xs font-bold text-slate-400 font-display uppercase tracking-widest">
-            Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredProducts.length)} of {filteredProducts.length} products
+            {isLoading || filteredProducts.length === 0
+              ? `Showing 0 to 0 of ${filteredProducts.length} products`
+              : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, filteredProducts.length)} of ${filteredProducts.length} products`}
           </p>
           <div className="flex gap-1.5 items-center">
             <button 

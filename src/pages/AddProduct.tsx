@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { 
+import {
   Info, 
   Image as ImageIcon, 
   Upload, 
@@ -13,6 +13,8 @@ import {
   Heart
 } from 'lucide-react';
 import { Product, ProductVariant } from '../types';
+import { storage } from '../firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 
 interface AddProductProps {
   onAddProduct: (product: Omit<Product, 'id'>) => Promise<void>;
@@ -45,6 +47,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     }
     return editingProduct?.imageUrl ? [editingProduct.imageUrl] : [];
   });
+  const [imageFiles, setImageFiles] = useState<Record<string, File>>({});
   const mainInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -67,21 +70,28 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   const updateVariantImages = (index: number, files: FileList | null) => {
     if (!files) return;
     const urls: string[] = [];
+    const filesByPreviewUrl: Record<string, File> = {};
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const url = URL.createObjectURL(f);
       urls.push(url);
+      filesByPreviewUrl[url] = f;
     }
+    setImageFiles(prev => ({ ...prev, ...filesByPreviewUrl }));
     setVariants(prev => prev.map((v, i) => i === index ? { ...v, images: [...v.images, ...urls] } : v));
   };
 
   const updateMainImages = (files: FileList | null) => {
     if (!files) return;
     const urls: string[] = [];
+    const filesByPreviewUrl: Record<string, File> = {};
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      urls.push(URL.createObjectURL(f));
+      const url = URL.createObjectURL(f);
+      urls.push(url);
+      filesByPreviewUrl[url] = f;
     }
+    setImageFiles(prev => ({ ...prev, ...filesByPreviewUrl }));
     setMainImages(prev => [...prev, ...urls]);
     if (mainInputRef.current) {
       mainInputRef.current.value = '';
@@ -92,8 +102,47 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     setVariants(prev => prev.map((v, i) => {
       if (i !== vIndex) return v;
       const images = v.images.filter((_, idx) => idx !== imgIndex);
+      const removedUrl = v.images[imgIndex];
+      if (removedUrl) {
+        setImageFiles(current => {
+          const next = { ...current };
+          delete next[removedUrl];
+          return next;
+        });
+      }
       return { ...v, images };
     }));
+  };
+
+  const uploadProductImage = async (previewUrl: string) => {
+    const file = imageFiles[previewUrl];
+
+    if (!file) {
+      return previewUrl.startsWith('blob:') ? '' : previewUrl;
+    }
+
+    try {
+      const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-').toLowerCase();
+      const imageRef = ref(storage, `products/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`);
+      const uploadResult = await Promise.race([
+        uploadBytes(imageRef, file),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error('Image upload timed out')), 5000);
+        })
+      ]);
+
+      return getDownloadURL(uploadResult.ref);
+    } catch (err) {
+      // Save the product even when Storage rules/network reject image uploads.
+      // eslint-disable-next-line no-console
+      console.error('Failed to upload product image to Firebase Storage', err);
+      return '';
+    }
+  };
+
+  const uploadProductImages = async (images: string[]) => {
+    const uploadedImages = await Promise.all(images.map(uploadProductImage));
+    return uploadedImages.filter(Boolean);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -125,48 +174,64 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     const mockupGlintImage = 'https://lh3.googleusercontent.com/aida-public/AB6AXuAtMVlsRWdEW-pFyEO3U1hZmeAx-sIK5aHnPNfHs_ZxVKxYrdHeeO6AGJ0hEtLf_KoVgfJrVpTlZVgDQrt1LjKsjQUehidZvRfhmKVHgPdVgWzkXuFrMkzJoNy6k4qO2ZfPi6LWdLyjSVqmJ_dJSiL71zLrSKeRrhJj13a1z7pJNMXclUgouUPHH-EvRZwzKVUK8tAOEMnn3SdZ4R3SzcmdNSEbHQT5RkQj57Xs7gTe7HX7f7mongL_TZ8uuH8bOOQFICSz6GjyGp0';
 
     setTimeout(async () => {
-      setSaving(false);
-      setSuccess(true);
+      try {
+        const [uploadedMainImages, uploadedVariants] = await Promise.all([
+          uploadProductImages(mainImages),
+          Promise.all(
+            normalizedVariants.map(async variant => ({
+              ...variant,
+              images: await uploadProductImages(variant.images)
+            }))
+          )
+        ]);
 
-      const productPayload = {
-        name,
-        brand,
-        category,
-        color,
-        description,
-        price: Number(price) || 120,
-        originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
-        discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
-        stock: Number(stock) || 50,
-        status: (Number(stock) || 50) > 15 ? 'In Stock' as const : 'Low Stock' as const,
-        imageUrl: mainImages[0] || normalizedVariants[0]?.images[0] || mockupGlintImage,
-        frameShape,
-        material,
-        gender,
-        sku: 'NV-' + Math.floor(1000 + Math.random() * 9000),
-        variants: normalizedVariants,
-      };
+        const primaryImage = uploadedMainImages[0] || uploadedVariants[0]?.images[0] || mockupGlintImage;
+        const variantsWithImages = uploadedVariants.map(variant => ({
+          ...variant,
+          images: variant.images.length ? variant.images : [primaryImage]
+        }));
 
-      if (editingProduct && onUpdateProduct) {
-        onUpdateProduct({
-          ...editingProduct,
-          ...productPayload
-        });
-      } else {
-        try {
+        const productPayload = {
+          name,
+          brand,
+          category,
+          color,
+          description,
+          price: Number(price) || 120,
+          originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
+          discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
+          stock: Number(stock) || 50,
+          status: (Number(stock) || 50) > 15 ? 'In Stock' as const : 'Low Stock' as const,
+          imageUrl: primaryImage,
+          frameShape,
+          material,
+          gender,
+          sku: 'NV-' + Math.floor(1000 + Math.random() * 9000),
+          variants: variantsWithImages,
+        };
+
+        if (editingProduct && onUpdateProduct) {
+          onUpdateProduct({
+            ...editingProduct,
+            ...productPayload
+          });
+        } else {
           await onAddProduct(productPayload);
-        } catch (err) {
-          console.error('Failed to save product', err);
-          alert('Unable to save product. Please try again.');
-          setSaving(false);
-          return;
         }
-      }
 
-      setTimeout(() => {
-        setSuccess(false);
-        setActiveTab('products');
-      }, 1000);
+        setSaving(false);
+        setSuccess(true);
+
+        setTimeout(() => {
+          setSuccess(false);
+          setActiveTab('products');
+        }, 1000);
+      } catch (err) {
+        console.error('Failed to save product', err);
+        const message = err instanceof Error ? err.message : 'Unknown Firebase error';
+        alert(`Unable to save product: ${message}`);
+        setSaving(false);
+      }
     }, 1500);
   };
 
@@ -268,11 +333,18 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
               mainImages.map((src, index) => (
                 <div key={index} className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
                   <img className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" src={src} alt={`main-${index}`} />
-                  <button
-                    type="button"
-                    onClick={() => setMainImages(prev => prev.filter((_, i) => i !== index))}
-                    className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"
-                  >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMainImages(prev => prev.filter((_, i) => i !== index));
+                          setImageFiles(current => {
+                            const next = { ...current };
+                            delete next[src];
+                            return next;
+                          });
+                        }}
+                        className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"
+                      >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>

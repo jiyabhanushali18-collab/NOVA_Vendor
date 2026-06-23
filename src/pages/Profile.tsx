@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { 
+import {
   Building, 
   User, 
   Mail, 
@@ -13,6 +13,8 @@ import {
   Layers
 } from 'lucide-react';
 import { ProfileInfo } from '../types';
+import { auth } from '../firebase';
+import { updateVendorProfile } from '../services/VendorService';
 
 interface ProfileProps {
   profileInfo: ProfileInfo;
@@ -33,28 +35,39 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
   // default banner image
   const defaultBannerUrl = 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&w=1200&q=80';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
 
-    setTimeout(() => {
+    const updatedProfile = {
+      ...profileInfo,
+      storeName,
+      companyName: storeName,
+      ownerName,
+      gstNumber,
+      contactDetails,
+      businessAddress
+    };
+
+    try {
+      if (auth.currentUser) {
+        await updateVendorProfile(auth.currentUser.uid, profileInfo.vendorId, updatedProfile);
+      }
+
       setIsSaving(false);
       setIsSaved(true);
 
-      // Save to global state cleanly
-      setProfileInfo(prev => ({
-        ...prev,
-        storeName,
-        ownerName,
-        gstNumber,
-        contactDetails,
-        businessAddress
-      }));
+      setProfileInfo(updatedProfile);
 
       setTimeout(() => {
         setIsSaved(false);
       }, 2000);
-    }, 1500);
+    } catch (err) {
+      setIsSaving(false);
+      // eslint-disable-next-line no-console
+      console.error('Failed to update vendor profile in Firestore', err);
+      alert('Unable to save vendor profile to Firebase. Please try again.');
+    }
   };
 
   return (

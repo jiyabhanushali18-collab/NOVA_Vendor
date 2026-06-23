@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Building, Hash, Mail, Lock, Eye, EyeOff, ShieldCheck, Globe, Loader2, ArrowRight, MapPin, Phone, User } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -8,9 +8,14 @@ import {
   setPersistence,
   signInWithEmailAndPassword
 } from 'firebase/auth';
-import { auth, db } from '../firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth } from '../firebase';
 import { ProfileInfo } from '../types';
+import {
+  buildProfileFromVendorDetails,
+  createVendorProfile,
+  getNextVendorId,
+  type VendorSignupData
+} from '../services/VendorService';
 
 interface LoginProps {
   onLoginSuccess: (email: string, profile?: ProfileInfo) => void;
@@ -22,14 +27,7 @@ type LocalUser = {
   vendorDetails?: VendorSignupDetails;
 };
 
-type VendorSignupDetails = {
-  companyName: string;
-  ownerName: string;
-  gstNumber: string;
-  phoneNumber: string;
-  businessAddress: string;
-  vendorId: string;
-};
+type VendorSignupDetails = VendorSignupData & { vendorId: string };
 
 const LOCAL_AUTH_USERS_KEY = 'nova-local-auth-users';
 const LOCAL_AUTH_SESSION_KEY = 'nova-local-auth-session';
@@ -84,42 +82,6 @@ const readLocalUsers = (): LocalUser[] => {
 
 const writeLocalUsers = (users: LocalUser[]) => {
   window.localStorage.setItem(LOCAL_AUTH_USERS_KEY, JSON.stringify(users));
-};
-
-const buildProfileFromVendorDetails = (details: VendorSignupDetails): ProfileInfo => ({
-  storeName: details.companyName,
-  companyName: details.companyName,
-  vendorId: details.vendorId,
-  ownerName: details.ownerName,
-  gstNumber: details.gstNumber,
-  contactDetails: details.phoneNumber,
-  businessAddress: details.businessAddress,
-  logoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(details.companyName)}&background=451ebb&color=fff&bold=true`,
-  status: 'PENDING',
-  memberSince: new Date().toLocaleString('en-US', { month: 'short', year: 'numeric' })
-});
-
-const writeVendorProfileToFirestore = async (uid: string, email: string, details: VendorSignupDetails, profile: ProfileInfo) => {
-  try {
-    await setDoc(doc(db, 'owner', uid), {
-      uid,
-      email,
-      vendorId: details.vendorId,
-      companyName: details.companyName,
-      ownerName: details.ownerName,
-      gstNumber: details.gstNumber,
-      contactDetails: details.phoneNumber,
-      businessAddress: details.businessAddress,
-      logoUrl: profile.logoUrl,
-      status: profile.status,
-      memberSince: profile.memberSince,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to save vendor profile to Firestore', err);
-  }
 };
 
 const writeLocalProfile = (profile: ProfileInfo) => {
@@ -182,6 +144,29 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  useEffect(() => {
+    if (mode !== 'signup') {
+      return;
+    }
+
+    let cancelled = false;
+
+    getNextVendorId()
+      .then(vendorId => {
+        if (!cancelled) {
+          setVendorDetails(prev => ({ ...prev, vendorId }));
+        }
+      })
+      .catch(err => {
+        // eslint-disable-next-line no-console
+        console.error('Failed to generate vendor ID from Firestore', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
+
   const updateVendorDetails = (field: keyof VendorSignupDetails, value: string) => {
     setVendorDetails(prev => ({ ...prev, [field]: value }));
   };
@@ -197,7 +182,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
 
     if (mode === 'signup') {
-      const missingVendorField = Object.values(vendorDetails).some(value => value.trim().length === 0);
+      const { vendorId: _vendorId, ...requiredVendorDetails } = vendorDetails;
+      const missingVendorField = Object.values(requiredVendorDetails).some(value => String(value).trim().length === 0);
 
       if (missingVendorField) {
         setError('Please fill in all vendor credentials.');
@@ -206,9 +192,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
 
     setIsLoading(true);
+    let firebaseAccountCreated = false;
 
     try {
       let userEmail = email.trim().toLowerCase();
+      let signupProfile: ProfileInfo | undefined;
       await setPersistence(auth, keepSignedIn ? browserLocalPersistence : browserSessionPersistence);
 
       if (mode === 'login') {
@@ -216,17 +204,26 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         userEmail = credential.user.email || userEmail;
       } else {
         const credential = await createUserWithEmailAndPassword(auth, userEmail, password);
+        firebaseAccountCreated = true;
         userEmail = credential.user.email || userEmail;
-        const profile = buildProfileFromVendorDetails(vendorDetails);
+        const { vendorId: _vendorId, ...vendorSignupData } = vendorDetails;
+        const profile = await createVendorProfile(credential.user.uid, userEmail, vendorSignupData);
+        setVendorDetails(prev => ({ ...prev, vendorId: profile.vendorId || prev.vendorId }));
         writeLocalProfile(profile);
-        await writeVendorProfileToFirestore(credential.user.uid, userEmail, vendorDetails, profile);
+        signupProfile = profile;
       }
 
       setIsSuccess(true);
       setTimeout(() => {
-        onLoginSuccess(userEmail, mode === 'signup' ? buildProfileFromVendorDetails(vendorDetails) : undefined);
+        onLoginSuccess(userEmail, signupProfile);
       }, 800);
     } catch (err) {
+      if (mode === 'signup' && firebaseAccountCreated) {
+        setError('Firebase account was created, but vendor details could not be saved. Check Firestore rules for owner/vendors writes.');
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const userEmail = mode === 'login'
           ? signInLocally(email, password, keepSignedIn)
@@ -379,10 +376,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       id="vendorId"
                       type="text"
                       value={vendorDetails.vendorId}
-                      onChange={(e) => updateVendorDetails('vendorId', e.target.value)}
                       placeholder="VEN001"
-                      required
-                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                      readOnly
+                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-slate-100/60 font-medium text-slate-500 placeholder-slate-400 outline-none cursor-not-allowed"
                     />
                   </div>
                 </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { initialProducts, initialOrders, initialActivities, initialProfile } from './store';
+import { initialOrders, initialActivities, initialProfile } from './store';
 import { Product, Order, Activity, ProfileInfo } from './types';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -14,6 +14,7 @@ import Orders from './pages/Orders';
 import Analytics from './pages/Analytics';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import { subscribeToProducts, type ProductDocument } from './services/ProductService';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -160,6 +161,47 @@ const readString = (...values: unknown[]) => {
   return '';
 };
 
+const productDocumentToProduct = (product: ProductDocument): Product => ({
+  id: product.id,
+  name: product.name || 'Untitled Product',
+  brand: product.brand || product.vendorName || 'Unbranded',
+  category: product.category || 'Uncategorized',
+  price: product.price,
+  stock: product.stock,
+  color: product.color,
+  description: product.description,
+  imageUrl: product.imageUrl
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(product.name || 'Product')}&background=e2d9ff&color=451ebb&bold=true`,
+  status: product.stock > 0 ? (product.stock < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
+  frameShape: product.frameShape,
+  material: product.material,
+  gender: product.gender,
+  sku: product.sku || product.vendorId,
+  vendorId: product.vendorId,
+  vendorName: product.vendorName,
+  createdAt: product.createdAt,
+  updatedAt: product.updatedAt,
+  originalPrice: product.originalPrice,
+  discountedPrice: product.discountedPrice,
+  variants: product.variants as Product['variants']
+});
+
+const removeUndefinedFields = <T,>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value.map(item => removeUndefinedFields(item)) as T;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, fieldValue]) => fieldValue !== undefined)
+      .map(([fieldKey, fieldValue]) => [fieldKey, removeUndefinedFields(fieldValue)])
+  ) as T;
+};
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -177,13 +219,15 @@ export default function App() {
         || (rememberedLocalSession && !!window.localStorage.getItem(LOCAL_AUTH_SESSION_KEY));
 
       if (user || hasLocalSession) {
-        const localProfile = readLocalProfile();
-        if (localProfile) {
-          setProfileInfo(localProfile);
-        } else if (user) {
+        if (user) {
           const vendorProfile = await fetchVendorProfile(user.uid);
           if (vendorProfile) {
             setProfileInfo(vendorProfile);
+          }
+        } else {
+          const localProfile = readLocalProfile();
+          if (localProfile) {
+            setProfileInfo(localProfile);
           }
         }
         setIsLoggedIn(true);
@@ -196,7 +240,8 @@ export default function App() {
   }, []);
 
   // Core application lists
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [activities, setActivities] = useState<Activity[]>(initialActivities);
   const [profileInfo, setProfileInfo] = useState<ProfileInfo>(initialProfile);
@@ -205,72 +250,27 @@ export default function App() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      setProducts([]);
+      setProductsLoading(false);
+      return;
+    }
 
-    // Load products from Firestore when user is signed in
-    const loadProducts = async () => {
-      try {
-        const { collection, getDocs } = await import('firebase/firestore');
-        const { db } = await import('./firebase');
-        const q = collection(db, 'products');
-        const snapshot = await getDocs(q);
-        const items: Product[] = snapshot.docs.map(doc => {
-          const data: any = doc.data();
-          const price = readNumber(
-            data.price,
-            data.sellingPrice,
-            data.salePrice,
-            data.retailPrice,
-            data.mrp,
-            data.MRP,
-            data.priceInRupees,
-            data.amount
-          ) || readNestedPrice(data);
-          const stock = readNumber(data.stock, data.quantity, data.availableStock, data.units);
-          const rating = readNumber(data.rating, data.averageRating, data.avgRating, data.productRating);
-          const ratingCount = readNumber(data.ratingCount, data.reviewCount, data.reviewsCount, data.totalReviews);
-          const arTryOnRating = readNumber(data.arTryOnRating, data.arRating, data.tryOnRating, data.arTryOn?.rating);
-          const arTryOnRatingCount = readNumber(
-            data.arTryOnRatingCount,
-            data.arRatingCount,
-            data.tryOnRatingCount,
-            data.arTryOn?.ratingCount
-          );
-          const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+    setProductsLoading(true);
 
-          return {
-            id: doc.id,
-            name: readString(data.name, data.productName, data.title),
-            brand: readString(data.brand, data.companyName, data.vendorName) || 'Unbranded',
-            category: readString(data.category, data.productCategory, data.type) || 'Uncategorized',
-            price,
-            stock,
-            color: readString(data.color, data.colour),
-            description: readString(data.description, data.details),
-            imageUrl: readString(data.imageUrl, data.image, data.photoUrl, data.thumbnailUrl)
-              || `https://ui-avatars.com/api/?name=${encodeURIComponent(readString(data.name, data.productName, data.title) || 'Product')}&background=e2d9ff&color=451ebb&bold=true`,
-            status: stock > 0 ? (stock < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
-            frameShape: data.frameShape,
-            material: data.material,
-            gender: data.gender,
-            sku: readString(data.sku, data.vendorId, data.productId),
-            faceShapes: data.faceShapes || [],
-            rating,
-            ratingCount,
-            arTryOnRating,
-            arTryOnRatingCount,
-            reviews
-          } as Product;
-        });
-        setProducts(items);
-      } catch (err) {
-        // keep app running even if Firestore read fails
+    const unsubscribe = subscribeToProducts(
+      firestoreProducts => {
+        setProducts(firestoreProducts.map(productDocumentToProduct));
+        setProductsLoading(false);
+      },
+      err => {
+        setProductsLoading(false);
         // eslint-disable-next-line no-console
-        console.error('Failed to load products from Firestore', err);
+        console.error('Failed to subscribe to products from Firestore', err);
       }
-    };
+    );
 
-    loadProducts();
+    return unsubscribe;
   }, [isLoggedIn]);
 
   // Realtime reviews listener — keeps product ratings & reviews in sync
@@ -364,7 +364,7 @@ export default function App() {
 
   const handleAddProduct = async (newProd: Omit<Product, 'id'>) => {
     const id = newProd.name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(Math.random() * 100);
-    const vendorId = profileInfo.vendorId;
+    const vendorId = profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO';
     const vendorName = profileInfo.companyName || profileInfo.storeName;
     const completedProduct: Product = {
       ...newProd,
@@ -398,16 +398,24 @@ export default function App() {
     // Inject vendor metadata and save new product to Firestore using current logged-in vendor
     try {
       const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
-      await addDoc(collection(db, 'products'), {
+      const productDocument = removeUndefinedFields({
         ...newProd,
+        sizes: [],
         vendorId,
         vendorName,
+        ownerName: profileInfo.ownerName,
+        vendorLocation: profileInfo.businessAddress,
+        vendorPhone: profileInfo.contactDetails,
+        status: 'active',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+
+      await addDoc(collection(db, 'products'), productDocument);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to save product to Firestore', err);
+      throw err;
     }
   };
 
@@ -547,6 +555,7 @@ export default function App() {
           {activeTab === 'products' && (
             <Products 
               products={products}
+              isLoading={productsLoading}
               setProducts={setProducts}
               setActiveTab={handleTabChange}
               onEditProduct={handleEditTrigger}
