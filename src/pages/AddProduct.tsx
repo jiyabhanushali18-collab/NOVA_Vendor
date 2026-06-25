@@ -13,8 +13,6 @@ import {
   Heart
 } from 'lucide-react';
 import { Product, ProductVariant } from '../types';
-import { storage } from '../firebase';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 
 interface AddProductProps {
   onAddProduct: (product: Omit<Product, 'id'>) => Promise<void>;
@@ -114,35 +112,78 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     }));
   };
 
-  const uploadProductImage = async (previewUrl: string) => {
-    const file = imageFiles[previewUrl];
+  const readImageAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Unable to read selected image.'));
+      reader.readAsDataURL(file);
+    });
 
-    if (!file) {
-      return previewUrl.startsWith('blob:') ? '' : previewUrl;
+  const loadImage = (url: string) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Unable to prepare selected image.'));
+      img.src = url;
+    });
+
+  const fileToCompressedDataUrl = async (file: File) => {
+    if (file.type === 'image/svg+xml' || file.type === 'image/gif') {
+      return readImageAsDataUrl(file);
     }
 
-    try {
-      const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-').toLowerCase();
-      const imageRef = ref(storage, `products/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`);
-      const uploadResult = await Promise.race([
-        uploadBytes(imageRef, file),
-        new Promise<never>((_, reject) => {
-          window.setTimeout(() => reject(new Error('Image upload timed out')), 5000);
-        })
-      ]);
+    const objectUrl = URL.createObjectURL(file);
 
-      return getDownloadURL(uploadResult.ref);
-    } catch (err) {
-      // Save the product even when Storage rules/network reject image uploads.
-      // eslint-disable-next-line no-console
-      console.error('Failed to upload product image to Firebase Storage', err);
-      return '';
+    try {
+      const img = await loadImage(objectUrl);
+      const maxSize = 520;
+      const scale = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
+      const width = Math.max(1, Math.round(img.naturalWidth * scale));
+      const height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+
+      if (!context) {
+        return readImageAsDataUrl(file);
+      }
+
+      context.drawImage(img, 0, 0, width, height);
+      return canvas.toDataURL('image/jpeg', 0.68);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
     }
   };
 
-  const uploadProductImages = async (images: string[]) => {
-    const uploadedImages = await Promise.all(images.map(uploadProductImage));
-    return uploadedImages.filter(Boolean);
+  const saveProductImage = async (previewUrl: string, imageCache: Map<string, Promise<string>>) => {
+    if (imageCache.has(previewUrl)) {
+      return imageCache.get(previewUrl)!;
+    }
+
+    const imagePromise = saveProductImageOnce(previewUrl);
+    imageCache.set(previewUrl, imagePromise);
+    return imagePromise;
+  };
+
+  const saveProductImageOnce = async (previewUrl: string) => {
+    const file = imageFiles[previewUrl];
+
+    if (!file) {
+      if (previewUrl.startsWith('blob:')) {
+        throw new Error('Selected image is no longer available. Please choose it again.');
+      }
+
+      return previewUrl;
+    }
+
+    return fileToCompressedDataUrl(file);
+  };
+
+  const saveProductImages = async (images: string[], imageCache: Map<string, Promise<string>>) => {
+    const savedImages = await Promise.all(images.map(image => saveProductImage(image, imageCache)));
+    return savedImages;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -152,7 +193,12 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
       return;
     }
 
-    const normalizedVariants = variants.length ? [...variants] : [{ color: color || 'Default', images: [] }];
+    const normalizedVariants = (variants.length ? variants : [{ color: color || 'Default', images: [] }])
+      .map(variant => ({
+        ...variant,
+        color: variant.color || color || 'Default',
+        images: [...variant.images]
+      }));
     if (normalizedVariants.length && normalizedVariants[0].images.length === 0 && mainImages.length) {
       normalizedVariants[0].images = [...mainImages];
     }
@@ -171,68 +217,69 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
     setSaving(true);
 
-    const mockupGlintImage = 'https://lh3.googleusercontent.com/aida-public/AB6AXuAtMVlsRWdEW-pFyEO3U1hZmeAx-sIK5aHnPNfHs_ZxVKxYrdHeeO6AGJ0hEtLf_KoVgfJrVpTlZVgDQrt1LjKsjQUehidZvRfhmKVHgPdVgWzkXuFrMkzJoNy6k4qO2ZfPi6LWdLyjSVqmJ_dJSiL71zLrSKeRrhJj13a1z7pJNMXclUgouUPHH-EvRZwzKVUK8tAOEMnn3SdZ4R3SzcmdNSEbHQT5RkQj57Xs7gTe7HX7f7mongL_TZ8uuH8bOOQFICSz6GjyGp0';
+    try {
+      const imageCache = new Map<string, Promise<string>>();
+      const [savedMainImages, savedVariants] = await Promise.all([
+        saveProductImages(mainImages, imageCache),
+        Promise.all(
+          normalizedVariants.map(async variant => ({
+            ...variant,
+            images: await saveProductImages(variant.images, imageCache)
+          }))
+        )
+      ]);
 
-    setTimeout(async () => {
-      try {
-        const [uploadedMainImages, uploadedVariants] = await Promise.all([
-          uploadProductImages(mainImages),
-          Promise.all(
-            normalizedVariants.map(async variant => ({
-              ...variant,
-              images: await uploadProductImages(variant.images)
-            }))
-          )
-        ]);
-
-        const primaryImage = uploadedMainImages[0] || uploadedVariants[0]?.images[0] || mockupGlintImage;
-        const variantsWithImages = uploadedVariants.map(variant => ({
-          ...variant,
-          images: variant.images.length ? variant.images : [primaryImage]
-        }));
-
-        const productPayload = {
-          name,
-          brand,
-          category,
-          color,
-          description,
-          price: Number(price) || 120,
-          originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
-          discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
-          stock: Number(stock) || 50,
-          status: (Number(stock) || 50) > 15 ? 'In Stock' as const : 'Low Stock' as const,
-          imageUrl: primaryImage,
-          frameShape,
-          material,
-          gender,
-          sku: 'NV-' + Math.floor(1000 + Math.random() * 9000),
-          variants: variantsWithImages,
-        };
-
-        if (editingProduct && onUpdateProduct) {
-          onUpdateProduct({
-            ...editingProduct,
-            ...productPayload
-          });
-        } else {
-          await onAddProduct(productPayload);
-        }
-
-        setSaving(false);
-        setSuccess(true);
-
-        setTimeout(() => {
-          setSuccess(false);
-          setActiveTab('products');
-        }, 1000);
-      } catch (err) {
-        console.error('Failed to save product', err);
-        const message = err instanceof Error ? err.message : 'Unknown Firebase error';
-        alert(`Unable to save product: ${message}`);
-        setSaving(false);
+      const primaryImage = savedMainImages[0] || savedVariants[0]?.images[0];
+      if (!primaryImage) {
+        throw new Error('Please upload at least one product image.');
       }
-    }, 1500);
+
+      const variantsWithImages = savedVariants.map(variant => ({
+        ...variant,
+        images: variant.images.length ? variant.images : [primaryImage]
+      }));
+
+      const productPayload = {
+        name,
+        brand,
+        category,
+        color,
+        description,
+        price: Number(price) || 120,
+        originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
+        discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
+        stock: Number(stock) || 50,
+        status: (Number(stock) || 50) > 15 ? 'In Stock' as const : 'Low Stock' as const,
+        imageUrl: primaryImage,
+        frameShape,
+        material,
+        gender,
+        sku: 'NV-' + Math.floor(1000 + Math.random() * 9000),
+        variants: variantsWithImages,
+      };
+
+      if (editingProduct && onUpdateProduct) {
+        onUpdateProduct({
+          ...editingProduct,
+          ...productPayload
+        });
+      } else {
+        await onAddProduct(productPayload);
+      }
+
+      setSaving(false);
+      setSuccess(true);
+
+      setTimeout(() => {
+        setSuccess(false);
+        setActiveTab('products');
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to save product', err);
+      const message = err instanceof Error ? err.message : 'Unknown Firebase error';
+      alert(`Unable to save product: ${message}`);
+      setSaving(false);
+    }
   };
 
   return (
