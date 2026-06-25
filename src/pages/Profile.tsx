@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Building, 
   User, 
@@ -13,7 +13,8 @@ import {
   Layers
 } from 'lucide-react';
 import { ProfileInfo } from '../types';
-import { auth } from '../firebase';
+import { auth, storage } from '../firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { updateVendorProfile } from '../services/VendorService';
 
 interface ProfileProps {
@@ -28,6 +29,9 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
   const [gstNumber, setGstNumber] = useState(profileInfo.gstNumber);
   const [contactDetails, setContactDetails] = useState(profileInfo.contactDetails);
   const [businessAddress, setBusinessAddress] = useState(profileInfo.businessAddress);
+  const [logoUrl, setLogoUrl] = useState(profileInfo.logoUrl);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -35,21 +39,59 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
   // default banner image
   const defaultBannerUrl = 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&w=1200&q=80';
 
+  const handleLogoChange = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please choose an image file for the brand logo.');
+      return;
+    }
+
+    setLogoFile(file);
+    setLogoUrl(URL.createObjectURL(file));
+    if (logoInputRef.current) {
+      logoInputRef.current.value = '';
+    }
+  };
+
+  const uploadLogo = async () => {
+    if (!logoFile) {
+      return logoUrl;
+    }
+
+    const vendorKey = profileInfo.vendorId || auth.currentUser?.uid || 'vendor';
+    const safeName = logoFile.name.replace(/[^a-z0-9._-]/gi, '-').toLowerCase();
+    const logoRef = ref(storage, `vendor-logos/${vendorKey}/${Date.now()}-${safeName}`);
+    const uploadResult = await Promise.race([
+      uploadBytes(logoRef, logoFile),
+      new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error('Logo upload timed out')), 8000);
+      })
+    ]);
+
+    return getDownloadURL(uploadResult.ref);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
 
-    const updatedProfile = {
-      ...profileInfo,
-      storeName,
-      companyName: storeName,
-      ownerName,
-      gstNumber,
-      contactDetails,
-      businessAddress
-    };
-
     try {
+      const uploadedLogoUrl = await uploadLogo();
+      const updatedProfile = {
+        ...profileInfo,
+        storeName,
+        companyName: storeName,
+        ownerName,
+        gstNumber,
+        contactDetails,
+        businessAddress,
+        logoUrl: uploadedLogoUrl
+      };
+
       if (auth.currentUser) {
         await updateVendorProfile(auth.currentUser.uid, profileInfo.vendorId, updatedProfile);
       }
@@ -58,6 +100,8 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
       setIsSaved(true);
 
       setProfileInfo(updatedProfile);
+      setLogoFile(null);
+      setLogoUrl(uploadedLogoUrl);
 
       setTimeout(() => {
         setIsSaved(false);
@@ -101,16 +145,23 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
               <img 
                 alt="Store Logo" 
                 className="w-full h-full object-cover rounded-2xl" 
-                src={profileInfo.logoUrl}
+                src={logoUrl}
                 referrerPolicy="no-referrer"
               />
-              <button 
-                type="button"
-                onClick={() => alert("Logo upload is disabled in preview. Recommended size: 300x300px")}
+              <label
+                htmlFor="profileLogo"
                 className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer"
               >
                 <Camera className="w-5 h-5 text-white" />
-              </button>
+              </label>
+              <input
+                ref={logoInputRef}
+                id="profileLogo"
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleLogoChange(e.target.files)}
+                className="sr-only"
+              />
             </div>
 
             <div className="space-y-1">

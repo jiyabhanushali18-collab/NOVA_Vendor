@@ -17,6 +17,7 @@ export interface VendorSignupData {
   gstNumber: string;
   phoneNumber: string;
   businessAddress: string;
+  logoUrl?: string;
 }
 
 export interface VendorRecord extends VendorSignupData {
@@ -42,15 +43,20 @@ const readVendorNumber = (value: unknown) => {
 const formatVendorId = (value: number) =>
   `${VENDOR_ID_PREFIX}${String(value).padStart(VENDOR_ID_DIGITS, '0')}`;
 
-const highestVendorNumber = (docs: DocumentData[]) =>
-  docs.reduce((highest, data) => Math.max(highest, readVendorNumber(data.vendorId)), 0);
+type VendorDocumentCandidate = DocumentData & { id?: string };
+
+const highestVendorNumber = (docs: VendorDocumentCandidate[]) =>
+  docs.reduce(
+    (highest, data) => Math.max(highest, readVendorNumber(data.vendorId), readVendorNumber(data.id)),
+    0
+  );
 
 export const getNextVendorId = async () => {
   const ownersSnapshot = await getDocs(collection(db, 'owner'));
   const vendorsSnapshot = await getDocs(collection(db, 'vendors'));
   const counterSnapshot = await getDoc(vendorCounterRef);
-  const ownerDocs = ownersSnapshot.docs.map(snapshot => snapshot.data());
-  const vendorDocs = vendorsSnapshot.docs.map(snapshot => snapshot.data());
+  const ownerDocs = ownersSnapshot.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id }));
+  const vendorDocs = vendorsSnapshot.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id }));
   const counterNumber = counterSnapshot.exists()
     ? Number(counterSnapshot.data().lastVendorNumber) || 0
     : 0;
@@ -62,8 +68,8 @@ export const getNextVendorId = async () => {
 const getCurrentHighestVendorNumber = async () => {
   const ownersSnapshot = await getDocs(collection(db, 'owner'));
   const vendorsSnapshot = await getDocs(collection(db, 'vendors'));
-  const ownerDocs = ownersSnapshot.docs.map(snapshot => snapshot.data());
-  const vendorDocs = vendorsSnapshot.docs.map(snapshot => snapshot.data());
+  const ownerDocs = ownersSnapshot.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id }));
+  const vendorDocs = vendorsSnapshot.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id }));
 
   return highestVendorNumber([...ownerDocs, ...vendorDocs]);
 };
@@ -78,7 +84,7 @@ export const buildProfileFromVendorDetails = (
   gstNumber: details.gstNumber,
   contactDetails: details.phoneNumber,
   businessAddress: details.businessAddress,
-  logoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(details.companyName)}&background=451ebb&color=fff&bold=true`,
+  logoUrl: details.logoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(details.companyName)}&background=451ebb&color=fff&bold=true`,
   status: 'PENDING',
   memberSince: new Date().toLocaleString('en-US', { month: 'short', year: 'numeric' })
 });

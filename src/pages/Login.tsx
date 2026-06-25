@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Building, Hash, Mail, Lock, Eye, EyeOff, ShieldCheck, Globe, Loader2, ArrowRight, MapPin, Phone, User } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Building, Hash, Mail, Lock, Eye, EyeOff, ShieldCheck, Globe, Loader2, ArrowRight, MapPin, Phone, User, Image as ImageIcon, Upload } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
   browserLocalPersistence,
@@ -8,7 +8,8 @@ import {
   setPersistence,
   signInWithEmailAndPassword
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { auth, storage } from '../firebase';
 import { ProfileInfo } from '../types';
 import {
   buildProfileFromVendorDetails,
@@ -35,6 +36,19 @@ const LOCAL_AUTH_REMEMBER_KEY = 'nova-local-auth-remember';
 const LOCAL_AUTH_PROFILE_KEY = 'nova-local-auth-profile';
 const DEMO_EMAIL = 'name@company.com';
 const DEMO_PASSWORD = 'password123';
+
+const uploadVendorLogo = async (file: File, vendorKey: string) => {
+  const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-').toLowerCase();
+  const logoRef = ref(storage, `vendor-logos/${vendorKey}/${Date.now()}-${safeName}`);
+  const uploadResult = await Promise.race([
+    uploadBytes(logoRef, file),
+    new Promise<never>((_, reject) => {
+      window.setTimeout(() => reject(new Error('Logo upload timed out')), 8000);
+    })
+  ]);
+
+  return getDownloadURL(uploadResult.ref);
+};
 
 const getAuthErrorCode = (err: unknown) => {
   if (err && typeof err === 'object' && 'code' in err) {
@@ -133,6 +147,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState('');
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [vendorDetails, setVendorDetails] = useState<VendorSignupDetails>({
     companyName: 'Trendy Threads',
     ownerName: 'Rahul Shah',
@@ -171,6 +188,24 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setVendorDetails(prev => ({ ...prev, [field]: value }));
   };
 
+  const updateLogo = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file for the brand logo.');
+      return;
+    }
+
+    setLogoFile(file);
+    setLogoPreviewUrl(URL.createObjectURL(file));
+    if (logoInputRef.current) {
+      logoInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -207,7 +242,18 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         firebaseAccountCreated = true;
         userEmail = credential.user.email || userEmail;
         const { vendorId: _vendorId, ...vendorSignupData } = vendorDetails;
-        const profile = await createVendorProfile(credential.user.uid, userEmail, vendorSignupData);
+        let logoUrl = '';
+
+        if (logoFile) {
+          try {
+            logoUrl = await uploadVendorLogo(logoFile, credential.user.uid);
+          } catch (uploadErr) {
+            // eslint-disable-next-line no-console
+            console.error('Failed to upload vendor logo to Firebase Storage', uploadErr);
+          }
+        }
+
+        const profile = await createVendorProfile(credential.user.uid, userEmail, { ...vendorSignupData, logoUrl });
         setVendorDetails(prev => ({ ...prev, vendorId: profile.vendorId || prev.vendorId }));
         writeLocalProfile(profile);
         signupProfile = profile;
@@ -344,6 +390,40 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       placeholder="Trendy Threads"
                       required
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <label htmlFor="brandLogo" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Brand Logo
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl border border-primary/25 bg-white/60 overflow-hidden flex items-center justify-center shrink-0">
+                      {logoPreviewUrl ? (
+                        <img
+                          src={logoPreviewUrl}
+                          alt="Brand logo preview"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="w-5 h-5 text-slate-400" />
+                      )}
+                    </div>
+                    <label
+                      htmlFor="brandLogo"
+                      className="h-12 flex-1 px-4 rounded-xl border border-primary/25 bg-white/40 font-semibold text-slate-600 hover:bg-white/70 hover:border-primary transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 text-sm"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span className="min-w-0 truncate">{logoFile ? logoFile.name : 'Upload logo'}</span>
+                    </label>
+                    <input
+                      ref={logoInputRef}
+                      id="brandLogo"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => updateLogo(e.target.files)}
+                      className="sr-only"
                     />
                   </div>
                 </div>
