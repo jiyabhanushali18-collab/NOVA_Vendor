@@ -40,6 +40,9 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     return [{ color: editingProduct?.color || '', images: editingProduct?.imageUrl ? [editingProduct.imageUrl] : [] }];
   });
   const [mainImages, setMainImages] = useState<string[]>(() => {
+    if (editingProduct?.images && editingProduct.images.length) {
+      return editingProduct.images;
+    }
     if (editingProduct?.variants && editingProduct.variants.length) {
       return editingProduct.variants[0].images || [];
     }
@@ -236,14 +239,26 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
       const variantsWithImages = savedVariants.map(variant => ({
         ...variant,
+        color: variant.color.trim(),
         images: variant.images.length ? variant.images : [primaryImage]
       }));
+      const productImages = Array.from(new Set([
+        ...savedMainImages,
+        ...variantsWithImages.flatMap(variant => variant.images)
+      ].filter(Boolean)));
+      const variantColors = Array.from(new Set(
+        variantsWithImages
+          .map(variant => variant.color.trim())
+          .filter(Boolean)
+      ));
+      const primaryColor = color.trim() || variantColors[0] || 'Default';
 
       const productPayload = {
         name,
         brand,
         category,
-        color,
+        color: primaryColor,
+        colors: variantColors.length ? variantColors : [primaryColor],
         description,
         price: Number(price) || 120,
         originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
@@ -251,6 +266,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         stock: Number(stock) || 50,
         status: (Number(stock) || 50) > 15 ? 'In Stock' as const : 'Low Stock' as const,
         imageUrl: primaryImage,
+        images: productImages.length ? productImages : [primaryImage],
         frameShape,
         material,
         gender,

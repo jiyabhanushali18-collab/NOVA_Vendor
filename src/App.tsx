@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { initialOrders, initialActivities, initialProfile } from './store';
@@ -161,30 +161,56 @@ const readString = (...values: unknown[]) => {
   return '';
 };
 
-const productDocumentToProduct = (product: ProductDocument): Product => ({
-  id: product.id,
-  name: product.name || 'Untitled Product',
-  brand: product.brand || product.vendorName || 'Unbranded',
-  category: product.category || 'Uncategorized',
-  price: product.price,
-  stock: product.stock,
-  color: product.color,
-  description: product.description,
-  imageUrl: product.imageUrl
-    || `https://ui-avatars.com/api/?name=${encodeURIComponent(product.name || 'Product')}&background=e2d9ff&color=451ebb&bold=true`,
-  status: product.stock > 0 ? (product.stock < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
-  frameShape: product.frameShape,
-  material: product.material,
-  gender: product.gender,
-  sku: product.sku || product.vendorId,
-  vendorId: product.vendorId,
-  vendorName: product.vendorName,
-  createdAt: product.createdAt,
-  updatedAt: product.updatedAt,
-  originalPrice: product.originalPrice,
-  discountedPrice: product.discountedPrice,
-  variants: product.variants as Product['variants']
-});
+const readVariantImages = (variants: ProductDocument['variants']) => {
+  if (!Array.isArray(variants)) {
+    return [];
+  }
+
+  return variants.flatMap(variant => {
+    if (!variant || typeof variant !== 'object' || !Array.isArray((variant as { images?: unknown }).images)) {
+      return [];
+    }
+
+    return (variant as { images: unknown[] }).images
+      .map(image => String(image).trim())
+      .filter(Boolean);
+  });
+};
+
+const productDocumentToProduct = (product: ProductDocument): Product => {
+  const fallbackImage = `https://ui-avatars.com/api/?name=${encodeURIComponent(product.name || 'Product')}&background=e2d9ff&color=451ebb&bold=true`;
+  const images = Array.from(new Set([
+    ...(product.images || []),
+    ...readVariantImages(product.variants),
+    product.imageUrl
+  ].filter(Boolean)));
+
+  return {
+    id: product.id,
+    name: product.name || 'Untitled Product',
+    brand: product.brand || product.vendorName || 'Unbranded',
+    category: product.category || 'Uncategorized',
+    price: product.price,
+    stock: product.stock,
+    color: product.color,
+    colors: product.colors,
+    description: product.description,
+    imageUrl: product.imageUrl || images[0] || fallbackImage,
+    images: images.length ? images : [fallbackImage],
+    status: product.stock > 0 ? (product.stock < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
+    frameShape: product.frameShape,
+    material: product.material,
+    gender: product.gender,
+    sku: product.sku || product.vendorId,
+    vendorId: product.vendorId,
+    vendorName: product.vendorName,
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+    originalPrice: product.originalPrice,
+    discountedPrice: product.discountedPrice,
+    variants: product.variants as Product['variants']
+  };
+};
 
 const removeUndefinedFields = <T,>(value: T): T => {
   if (Array.isArray(value)) {
@@ -245,6 +271,7 @@ export default function App() {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [activities, setActivities] = useState<Activity[]>(initialActivities);
   const [profileInfo, setProfileInfo] = useState<ProfileInfo>(initialProfile);
+  const pendingProductsRef = useRef<Product[]>([]);
 
   // State to support editing products within AddProduct screen
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -260,7 +287,13 @@ export default function App() {
 
     const unsubscribe = subscribeToProducts(
       firestoreProducts => {
-        setProducts(firestoreProducts.map(productDocumentToProduct));
+        const mappedProducts = firestoreProducts.map(productDocumentToProduct);
+        const pendingProducts = pendingProductsRef.current.filter(pendingProduct =>
+          !mappedProducts.some(product => product.id === pendingProduct.id)
+        );
+
+        pendingProductsRef.current = pendingProducts;
+        setProducts([...pendingProducts, ...mappedProducts]);
         setProductsLoading(false);
       },
       err => {
@@ -381,6 +414,7 @@ export default function App() {
     };
     
     // Add to list immediately for UI responsiveness
+    pendingProductsRef.current = [completedProduct, ...pendingProductsRef.current];
     setProducts(prev => [completedProduct, ...prev]);
 
     // Create activity
@@ -411,8 +445,21 @@ export default function App() {
         updatedAt: serverTimestamp()
       });
 
-      await addDoc(collection(db, 'products'), productDocument);
+      const docRef = await addDoc(collection(db, 'products'), productDocument);
+      const savedProduct = {
+        ...completedProduct,
+        id: docRef.id
+      };
+
+      pendingProductsRef.current = pendingProductsRef.current.map(product =>
+        product.id === completedProduct.id ? savedProduct : product
+      );
+      setProducts(prev => prev.map(product =>
+        product.id === completedProduct.id ? savedProduct : product
+      ));
     } catch (err) {
+      pendingProductsRef.current = pendingProductsRef.current.filter(product => product.id !== completedProduct.id);
+      setProducts(prev => prev.filter(product => product.id !== completedProduct.id));
       // eslint-disable-next-line no-console
       console.error('Failed to save product to Firestore', err);
       throw err;

@@ -6,8 +6,10 @@ export interface Product {
   price: number;
   stock: number;
   color: string;
+  colors?: string[];
   description: string;
   imageUrl: string;
+  images?: string[];
   status: 'In Stock' | 'Low Stock' | 'Out of Stock';
   frameShape?: string;
   material?: string;
