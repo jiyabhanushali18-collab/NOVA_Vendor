@@ -162,19 +162,45 @@ const readString = (...values: unknown[]) => {
 };
 
 const readVariantImages = (variants: ProductDocument['variants']) => {
-  if (!Array.isArray(variants)) {
-    return [];
-  }
+  if (!Array.isArray(variants)) return [];
 
-  return variants.flatMap(variant => {
-    if (!variant || typeof variant !== 'object' || !Array.isArray((variant as { images?: unknown }).images)) {
-      return [];
+  const extractFromObject = (obj: any): string[] => {
+    if (!obj || typeof obj !== 'object') return [];
+
+    const results: string[] = [];
+
+    // Common array-shaped keys
+    const arrayKeys = ['images', 'imageUrls', 'photos', 'media', 'imagesUrl', 'photosUrl'];
+    for (const key of arrayKeys) {
+      const v = obj[key];
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          if (typeof item === 'string') results.push(item.trim());
+          else if (item && typeof item === 'object') {
+            const url = item.url || item.src || item.path || item.image;
+            if (url && typeof url === 'string') results.push(url.trim());
+          }
+        }
+      }
     }
 
-    return (variant as { images: unknown[] }).images
-      .map(image => String(image).trim())
-      .filter(Boolean);
-  });
+    // Common single-string keys
+    const stringKeys = ['image', 'imageUrl', 'photo', 'thumbnail', 'src'];
+    for (const key of stringKeys) {
+      const v = obj[key];
+      if (typeof v === 'string' && v.trim()) results.push(v.trim());
+    }
+
+    return results.filter(Boolean);
+  };
+
+  return Array.from(new Set(variants.flatMap(variant => {
+    if (!variant) return [];
+    if (typeof variant === 'string') return [variant.trim()].filter(Boolean);
+    if (Array.isArray(variant)) return variant.map(String).map(s => s.trim()).filter(Boolean);
+
+    return extractFromObject(variant);
+  })));
 };
 
 const productDocumentToProduct = (product: ProductDocument): Product => {
@@ -273,6 +299,21 @@ export default function App() {
   const [profileInfo, setProfileInfo] = useState<ProfileInfo>(initialProfile);
   const pendingProductsRef = useRef<Product[]>([]);
 
+  const matchesCurrentStore = (product: Product) => {
+    const currentVendorId = profileInfo.vendorId?.trim();
+    const currentVendorName = (profileInfo.companyName || profileInfo.storeName || '').trim().toLowerCase();
+
+    if (currentVendorId && product.vendorId === currentVendorId) {
+      return true;
+    }
+
+    if (currentVendorName && product.vendorName?.trim().toLowerCase() === currentVendorName) {
+      return true;
+    }
+
+    return false;
+  };
+
   // State to support editing products within AddProduct screen
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
@@ -287,7 +328,9 @@ export default function App() {
 
     const unsubscribe = subscribeToProducts(
       firestoreProducts => {
-        const mappedProducts = firestoreProducts.map(productDocumentToProduct);
+        const mappedProducts = firestoreProducts
+          .map(productDocumentToProduct)
+          .filter(matchesCurrentStore);
         const pendingProducts = pendingProductsRef.current.filter(pendingProduct =>
           !mappedProducts.some(product => product.id === pendingProduct.id)
         );
@@ -602,6 +645,7 @@ export default function App() {
           {activeTab === 'products' && (
             <Products 
               products={products}
+              profileInfo={profileInfo}
               isLoading={productsLoading}
               setProducts={setProducts}
               setActiveTab={handleTabChange}

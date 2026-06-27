@@ -10,19 +10,20 @@ import {
   ChevronLeft, 
   ChevronRight
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product, ProfileInfo } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRupees } from '../utils/currency';
 
 interface ProductsProps {
   products: Product[];
+  profileInfo?: ProfileInfo;
   isLoading?: boolean;
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setActiveTab: (tab: string) => void;
   onEditProduct?: (product: Product) => void;
 }
 
-export default function Products({ products, isLoading = false, setProducts, setActiveTab, onEditProduct }: ProductsProps) {
+export default function Products({ products, profileInfo, isLoading = false, setProducts, setActiveTab, onEditProduct }: ProductsProps) {
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [selectedStatus, setSelectedStatus] = useState('Status: All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,12 +48,21 @@ export default function Products({ products, isLoading = false, setProducts, set
     }
 
     // Search check
+    const lowerSearch = searchQuery.toLowerCase();
     const matchesSearch = 
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku?.toLowerCase().includes(searchQuery.toLowerCase());
+      product.name.toLowerCase().includes(lowerSearch) ||
+      product.brand.toLowerCase().includes(lowerSearch) ||
+      product.sku?.toLowerCase().includes(lowerSearch);
 
-    return matchesCategory && matchesStatus && matchesSearch;
+    // Vendor store check
+    const vendorStoreId = profileInfo?.vendorId?.trim();
+    const vendorStoreName = (profileInfo?.companyName || profileInfo?.storeName || '').trim().toLowerCase();
+    const matchesStore =
+      !vendorStoreId && !vendorStoreName ||
+      (vendorStoreId ? product.vendorId === vendorStoreId : false) ||
+      (vendorStoreName ? product.vendorName?.trim().toLowerCase() === vendorStoreName : false);
+
+    return matchesCategory && matchesStatus && matchesSearch && matchesStore;
   });
 
   // Pagination bounds
