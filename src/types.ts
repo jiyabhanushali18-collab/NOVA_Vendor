@@ -8,6 +8,7 @@ export interface Product {
   color: string;
   colors?: string[];
   description: string;
+  mainImage?: string;
   imageUrl: string;
   images?: string[];
   status: 'In Stock' | 'Low Stock' | 'Out of Stock';
@@ -42,7 +43,8 @@ export interface ProductReview {
 export interface ProductVariant {
   id?: string;
   color: string;
-  images: string[]; // image URLs or local object URLs for previews
+  images: string[];
+  stock?: number;
 }
 
 export interface Order {

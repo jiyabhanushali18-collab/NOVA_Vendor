@@ -1,16 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   Info, 
   Image as ImageIcon, 
-  Upload, 
   Trash2, 
-  Plus, 
   IndianRupee, 
   Eye, 
-  AlertTriangle,
-  Boxes,
-  Activity,
-  Heart
+  Boxes
 } from 'lucide-react';
 import { Product, ProductVariant } from '../types';
 
@@ -18,7 +13,7 @@ interface AddProductProps {
   onAddProduct: (product: Omit<Product, 'id'>) => Promise<void>;
   setActiveTab: (tab: string) => void;
   editingProduct?: Product | null;
-  onUpdateProduct?: (product: Product) => void;
+  onUpdateProduct?: (product: Product) => Promise<void>;
 }
 
 const createVariantId = () => {
@@ -33,7 +28,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   const [name, setName] = useState(editingProduct?.name || '');
   const [brand, setBrand] = useState(editingProduct?.brand || '');
   const [category, setCategory] = useState(editingProduct?.category || 'General');
-  const [color, setColor] = useState(editingProduct?.color || '');
+  const fallbackColor = editingProduct?.color || '';
   const [description, setDescription] = useState(editingProduct?.description || '');
   const [price, setPrice] = useState<number>(editingProduct?.price || 0);
   const [originalPrice, setOriginalPrice] = useState<number | ''>(editingProduct?.originalPrice ?? '');
@@ -49,19 +44,18 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         id: variant.id || createVariantId()
       }));
     }
-    return [{ id: createVariantId(), color: editingProduct?.color || '', images: editingProduct?.imageUrl ? [editingProduct.imageUrl] : [] }];
-  });
-  const [mainImages, setMainImages] = useState<string[]>(() => {
-    if (editingProduct?.images && editingProduct.images.length) {
-      return editingProduct.images;
-    }
-    if (editingProduct?.variants && editingProduct.variants.length) {
-      return editingProduct.variants[0].images || [];
-    }
-    return editingProduct?.imageUrl ? [editingProduct.imageUrl] : [];
+    return [{
+      id: createVariantId(),
+      color: fallbackColor,
+      images: editingProduct?.images?.length
+        ? editingProduct.images
+        : editingProduct?.imageUrl
+          ? [editingProduct.imageUrl]
+          : [],
+      stock: editingProduct?.stock
+    }];
   });
   const [imageFiles, setImageFiles] = useState<Record<string, File>>({});
-  const mainInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -69,7 +63,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   // face-shape compatibility removed for clothing / AR try-on
 
   const addVariant = () => {
-    setVariants(prev => [...prev, { id: createVariantId(), color: '', images: [] }]);
+    setVariants(prev => [...prev, { id: createVariantId(), color: '', images: [], stock: undefined }]);
   };
 
   const removeVariant = (variantId: string) => {
@@ -78,6 +72,14 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
   const updateVariantColor = (variantId: string, colorVal: string) => {
     setVariants(prev => prev.map(variant => variant.id === variantId ? { ...variant, color: colorVal } : variant));
+  };
+
+  const updateVariantStock = (variantId: string, stockValue: string) => {
+    setVariants(prev => prev.map(variant =>
+      variant.id === variantId
+        ? { ...variant, stock: stockValue === '' ? undefined : Math.max(0, Number(stockValue) || 0) }
+        : variant
+    ));
   };
 
   const updateVariantImages = (variantId: string, files: FileList | null) => {
@@ -92,23 +94,6 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     }
     setImageFiles(prev => ({ ...prev, ...filesByPreviewUrl }));
     setVariants(prev => prev.map(variant => variant.id === variantId ? { ...variant, images: [...variant.images, ...urls] } : variant));
-  };
-
-  const updateMainImages = (files: FileList | null) => {
-    if (!files) return;
-    const urls: string[] = [];
-    const filesByPreviewUrl: Record<string, File> = {};
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const url = URL.createObjectURL(f);
-      urls.push(url);
-      filesByPreviewUrl[url] = f;
-    }
-    setImageFiles(prev => ({ ...prev, ...filesByPreviewUrl }));
-    setMainImages(prev => [...prev, ...urls]);
-    if (mainInputRef.current) {
-      mainInputRef.current.value = '';
-    }
   };
 
   const removeVariantImage = (variantId: string, imgIndex: number) => {
@@ -208,40 +193,12 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
       return;
     }
 
-    const normalizedVariants = (variants.length ? variants : [{ color: color || 'Default', images: [] }])
+    const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor || 'Default', images: [], stock }])
       .map(variant => ({
-        ...variant,
-        color: variant.color || color || 'Default',
-        images: [...variant.images]
+        color: (variant.color || fallbackColor || 'Default').trim(),
+        images: [...variant.images],
+        stock: variant.stock
       }));
-    
-    // Assign main images to variants intelligently
-    if (normalizedVariants.length && mainImages.length) {
-      const primaryColorTrim = (color || '').trim();
-      
-      // Separate variants with images vs without
-      const variantsWithImages = normalizedVariants.filter(v => v.images && v.images.length > 0);
-      const variantsWithoutImages = normalizedVariants.filter(v => !v.images || v.images.length === 0);
-      
-      // If some variants have no images, assign main images to them
-      if (variantsWithoutImages.length > 0) {
-        // First, try to assign to the primary color variant
-        const primaryColorIdx = normalizedVariants.findIndex(v => 
-          (v.color || '').trim().toLowerCase() === primaryColorTrim.toLowerCase()
-        );
-        
-        if (primaryColorIdx !== -1 && (!normalizedVariants[primaryColorIdx].images || normalizedVariants[primaryColorIdx].images.length === 0)) {
-          normalizedVariants[primaryColorIdx].images = [...mainImages];
-          variantsWithoutImages.splice(variantsWithoutImages.indexOf(normalizedVariants[primaryColorIdx]), 1);
-        }
-        
-        // For remaining variants without images, distribute main images to all of them
-        // (so each color variant has the same product images available)
-        variantsWithoutImages.forEach(variant => {
-          variant.images = [...mainImages];
-        });
-      }
-    }
 
     // validate variants: at least one variant and each must have >=1 image
     if (!normalizedVariants || normalizedVariants.length === 0) {
@@ -259,36 +216,33 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
     try {
       const imageCache = new Map<string, Promise<string>>();
-      const [savedMainImages, savedVariants] = await Promise.all([
-        saveProductImages(mainImages, imageCache),
-        Promise.all(
-          normalizedVariants.map(async variant => ({
-            ...variant,
-            images: await saveProductImages(variant.images, imageCache)
-          }))
-        )
-      ]);
+      const savedVariants = await Promise.all(
+        normalizedVariants.map(async variant => ({
+          ...variant,
+          images: await saveProductImages(variant.images, imageCache)
+        }))
+      );
 
-      const primaryImage = savedMainImages[0] || savedVariants[0]?.images[0];
+      const primaryImage = savedVariants[0]?.images[0];
       if (!primaryImage) {
         throw new Error('Please upload at least one product image.');
       }
 
       const variantsWithImages = savedVariants.map(variant => ({
-        ...variant,
         color: variant.color.trim(),
-        images: variant.images.length ? variant.images : [primaryImage]
+        images: variant.images,
+        stock: variant.stock === undefined ? undefined : Math.max(0, Number(variant.stock) || 0)
       }));
-      const productImages = Array.from(new Set([
-        ...savedMainImages,
-        ...variantsWithImages.flatMap(variant => variant.images)
-      ].filter(Boolean)));
+      const productImages = [primaryImage];
       const variantColors = Array.from(new Set(
         variantsWithImages
           .map(variant => variant.color.trim())
           .filter(Boolean)
       ));
-      const primaryColor = color.trim() || variantColors[0] || 'Default';
+      const primaryColor = variantColors[0] || fallbackColor || 'Default';
+      const enteredProductStock = Number(stock) || 0;
+      const variantStockTotal = variantsWithImages.reduce((total, variant) => total + (variant.stock ?? 0), 0);
+      const totalStock = enteredProductStock || variantStockTotal;
 
       const productPayload = {
         name,
@@ -300,8 +254,9 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         price: Number(price) || 120,
         originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
         discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
-        stock: Number(stock) || 50,
-        status: (Number(stock) || 50) > 15 ? 'In Stock' as const : 'Low Stock' as const,
+        stock: totalStock,
+        status: totalStock > 15 ? 'In Stock' as const : totalStock > 0 ? 'Low Stock' as const : 'Out of Stock' as const,
+        mainImage: primaryImage,
         imageUrl: primaryImage,
         images: productImages.length ? productImages : [primaryImage],
         frameShape,
@@ -312,7 +267,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
       };
 
       if (editingProduct && onUpdateProduct) {
-        onUpdateProduct({
+        await onUpdateProduct({
           ...editingProduct,
           ...productPayload
         });
@@ -384,16 +339,6 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
                 <option>Sport</option>
               </select>
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">COLOR</label>
-              <input 
-                type="text"
-                value={color}
-                onChange={e => setColor(e.target.value)}
-                placeholder="e.g. Gradient Indigo"
-                className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200"
-              />
-            </div>
             <div className="flex flex-col gap-2 md:col-span-2">
               <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">DESCRIPTION</label>
               <textarea 
@@ -404,85 +349,6 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 resize-none"
               />
             </div>
-          </div>
-        </section>
-
-        {/* Product Media */}
-        <section className="bg-white/60 backdrop-blur-md rounded-2xl p-6 border border-slate-200/50">
-          <div className="flex items-center gap-3 mb-6">
-            <ImageIcon className="w-5 h-5 text-primary" />
-            <h2 className="font-display text-base font-bold text-slate-800">Product Media</h2>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Upload Main placeholder */}
-            <label className="aspect-square rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/10 transition-all">
-              <Upload className="w-6 h-6 text-primary mb-2" />
-              <span className="text-[10px] uppercase font-bold tracking-wider text-primary/60">UPLOAD MAIN</span>
-              <input
-                ref={mainInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={e => updateMainImages(e.target.files)}
-              />
-            </label>
-
-            {mainImages.length ? (
-              mainImages.map((src, index) => (
-                <div key={index} className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
-                  <img className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" src={src} alt={`main-${index}`} />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMainImages(prev => prev.filter((_, i) => i !== index));
-                          setImageFiles(current => {
-                            const next = { ...current };
-                            delete next[src];
-                            return next;
-                          });
-                        }}
-                        className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"
-                      >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))
-            ) : (
-              <>
-                {/* Existing mock asset image 2 */}
-                <div className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
-                  <img 
-                    className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" 
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtMVlsRWdEW-pFyEO3U1hZmeAx-sIK5aHnPNfHs_ZxVKxYrdHeeO6AGJ0hEtLf_KoVgfJrVpTlZVgDQrt1LjKsjQUehidZvRfhmKVHgPdVgWzkXuFrMkzJoNy6k4qO2ZfPi6LWdLyjSVqmJ_dJSiL71zLrSKeRrhJj13a1z7pJNMXclUgouUPHH-EvRZwzKVUK8tAOEMnn3SdZ4R3SzcmdNSEbHQT5RkQj57Xs7gTe7HX7f7mongL_TZ8uuH8bOOQFICSz6GjyGp0" 
-                    alt="Product sample 2" 
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
-                    <Trash2 className="w-5 h-5 text-red-500 hover:scale-110 transition-transform" />
-                  </div>
-                </div>
-
-                {/* Existing mock asset image 3 */}
-                <div className="aspect-square rounded-2xl bg-slate-100/50 border border-slate-200 relative overflow-hidden group">
-                  <img 
-                    className="w-full h-full object-cover opacity-70 group-hover:scale-105 duration-300 rounded-2xl" 
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuASB6mwCD-qC-PscxNz6BcA3TcYiQVfEBYXySBdUr7hq6LKxrttnUJ3z2WiBPId19N9UaZSLQGZ7Afv00M6WSjOrwRNPljqyogBprzm6kOUnhTF3coKQmaJNOQIsyXLc4rEvTaWeeHd5fEvZ39Zzo6PjiPE2KppVNT91IVztocbWpN_e-T4g1PQZJI3g5e_zxapnzhKRJWptO0IGyri9dfl5HSly3QiKEGQsZT5ydN3hKEJkY7ycMJwEhVSpCxCrTnw9W6tZGBZ3Lc" 
-                    alt="Product sample 3" 
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
-                    <Trash2 className="w-5 h-5 text-red-500 hover:scale-110 transition-transform" />
-                  </div>
-                </div>
-
-                {/* Dash placeholder plus */}
-                <div className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 hover:border-slate-300 flex items-center justify-center hover:bg-slate-50 duration-200">
-                  <Plus className="w-6 h-6 text-slate-400" />
-                </div>
-              </>
-            )}
           </div>
         </section>
 
@@ -630,13 +496,21 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
           <div className="space-y-4">
             {variants.map((v, idx) => (
               <div key={v.id || idx} className="border rounded-xl p-4">
-                <div className="flex items-center gap-4 mb-3">
+                <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
                   <input
                     type="text"
                     value={v.color}
                     onChange={e => updateVariantColor(v.id || '', e.target.value)}
                     placeholder="Color name (e.g. Red)"
                     className="flex-1 bg-white/40 border border-primary/20 rounded-xl px-4 py-2 outline-none"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={v.stock ?? ''}
+                    onChange={e => updateVariantStock(v.id || '', e.target.value)}
+                    placeholder="Variant stock"
+                    className="w-full md:w-36 bg-white/40 border border-primary/20 rounded-xl px-4 py-2 outline-none"
                   />
                   <div className="flex items-center gap-2">
                     <label className="px-3 py-2 bg-primary/10 rounded cursor-pointer text-sm">

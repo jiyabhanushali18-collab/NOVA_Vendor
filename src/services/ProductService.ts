@@ -16,6 +16,7 @@ export interface ProductDocument {
   price: number;
   originalPrice?: number;
   discountedPrice?: number;
+  mainImage?: string;
   imageUrl: string;
   images?: string[];
   sizes: string[];
@@ -29,10 +30,16 @@ export interface ProductDocument {
   material?: string;
   gender?: string;
   sku: string;
-  variants?: unknown[];
+  variants?: ProductVariantDocument[];
   status?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
+}
+
+export interface ProductVariantDocument {
+  color: string;
+  images: string[];
+  stock?: number;
 }
 
 export type ProductsSubscriber = (products: ProductDocument[]) => void;
@@ -146,6 +153,70 @@ const readImages = (...values: unknown[]) => {
   return [];
 };
 
+const readImageStrings = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .flatMap(item => {
+      if (typeof item === 'string') {
+        return [item.trim()];
+      }
+
+      if (item && typeof item === 'object') {
+        return [readString(
+          (item as any).url,
+          (item as any).src,
+          (item as any).path,
+          (item as any).image,
+          (item as any).imageUrl,
+          (item as any).photo
+        )];
+      }
+
+      return [];
+    })
+    .filter(Boolean);
+};
+
+const readVariants = (value: unknown): ProductVariantDocument[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const variants = value.flatMap(variant => {
+    if (!variant || typeof variant !== 'object' || Array.isArray(variant)) {
+      return [];
+    }
+
+    const data = variant as any;
+    const color = readString(data.color, data.colour, data.name);
+    const images = readImageStrings(data.images)
+      .concat(readImageStrings(data.imageUrls))
+      .concat(readImageStrings(data.photos))
+      .concat(readImageStrings(data.media));
+    const singleImage = readString(data.image, data.imageUrl, data.photo, data.thumbnail, data.src);
+    const stock = data.stock === undefined ? undefined : readNumber(data.stock);
+    const normalizedImages = Array.from(new Set([
+      ...images,
+      singleImage
+    ].filter(Boolean)));
+
+    if (!color && normalizedImages.length === 0) {
+      return [];
+    }
+
+    return [{
+      color: color || 'Default',
+      images: normalizedImages,
+      stock
+    }];
+  });
+
+  return variants.length ? variants : undefined;
+};
+
 const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): ProductDocument => {
   const data = snapshot.data();
 
@@ -157,7 +228,8 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
     price: readNumber(data.price),
     originalPrice: data.originalPrice === undefined ? undefined : readNumber(data.originalPrice),
     discountedPrice: data.discountedPrice === undefined ? undefined : readNumber(data.discountedPrice),
-    imageUrl: readString(data.imageUrl, data.image, data.photoUrl, data.thumbnailUrl),
+    mainImage: readString(data.mainImage, data.imageUrl, data.image, data.photoUrl, data.thumbnailUrl),
+    imageUrl: readString(data.imageUrl, data.mainImage, data.image, data.photoUrl, data.thumbnailUrl),
     images: readImages(data.images, data.imageUrls, data.photos),
     sizes: readSizes(data.sizes),
     vendorId: readString(data.vendorId),
@@ -170,7 +242,7 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
     material: readString(data.material) || undefined,
     gender: readString(data.gender) || undefined,
     sku: readString(data.sku, data.productId),
-    variants: Array.isArray(data.variants) ? data.variants : undefined,
+    variants: readVariants(data.variants),
     status: readString(data.status) || undefined,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt

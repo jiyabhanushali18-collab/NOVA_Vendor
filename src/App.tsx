@@ -171,59 +171,26 @@ const extractVariantColors = (variants: ProductDocument['variants']) => {
   })));
 };
 
-const readVariantImages = (variants: ProductDocument['variants']) => {
-  if (!Array.isArray(variants)) return [];
-
-  const extractFromObject = (obj: any): string[] => {
-    if (!obj || typeof obj !== 'object') return [];
-
-    const results: string[] = [];
-
-    // Common array-shaped keys
-    const arrayKeys = ['images', 'imageUrls', 'photos', 'media', 'imagesUrl', 'photosUrl'];
-    for (const key of arrayKeys) {
-      const v = obj[key];
-      if (Array.isArray(v)) {
-        for (const item of v) {
-          if (typeof item === 'string') results.push(item.trim());
-          else if (item && typeof item === 'object') {
-            const url = item.url || item.src || item.path || item.image;
-            if (url && typeof url === 'string') results.push(url.trim());
-          }
-        }
-      }
-    }
-
-    // Common single-string keys
-    const stringKeys = ['image', 'imageUrl', 'photo', 'thumbnail', 'src'];
-    for (const key of stringKeys) {
-      const v = obj[key];
-      if (typeof v === 'string' && v.trim()) results.push(v.trim());
-    }
-
-    return results.filter(Boolean);
-  };
-
-  return Array.from(new Set(variants.flatMap(variant => {
-    if (!variant) return [];
-    if (typeof variant === 'string') return [variant.trim()].filter(Boolean);
-    if (Array.isArray(variant)) return variant.map(String).map(s => s.trim()).filter(Boolean);
-
-    return extractFromObject(variant);
-  })));
-};
-
 const productDocumentToProduct = (product: ProductDocument): Product => {
   const fallbackImage = `https://ui-avatars.com/api/?name=${encodeURIComponent(product.name || 'Product')}&background=e2d9ff&color=451ebb&bold=true`;
+  const variants = product.variants?.map(variant => ({
+    color: readString(variant.color) || 'Default',
+    images: Array.from(new Set((variant.images || []).filter(Boolean))),
+    stock: variant.stock
+  })).filter(variant => variant.color || variant.images.length);
+  const firstVariantImage = variants?.flatMap(variant => variant.images)[0];
   const images = Array.from(new Set([
     ...(product.images || []),
-    ...readVariantImages(product.variants),
-    product.imageUrl
+    product.mainImage,
+    product.imageUrl,
+    firstVariantImage
   ].filter(Boolean)));
 
-  const variantColors = extractVariantColors(product.variants);
+  const variantColors = variants?.map(variant => variant.color).filter(Boolean) || extractVariantColors(product.variants);
   const colors = Array.from(new Set([...(product.colors || []), ...variantColors].filter(Boolean)));
   const primaryColor = readString(product.color) || colors[0] || 'Default';
+  const stockFromVariants = variants?.reduce((total, variant) => total + (variant.stock ?? 0), 0) || 0;
+  const stock = product.stock || stockFromVariants;
 
   return {
     id: product.id,
@@ -231,13 +198,14 @@ const productDocumentToProduct = (product: ProductDocument): Product => {
     brand: product.brand || product.vendorName || 'Unbranded',
     category: product.category || 'Uncategorized',
     price: product.price,
-    stock: product.stock,
+    stock,
     color: primaryColor,
     colors: colors.length ? colors : undefined,
     description: product.description,
-    imageUrl: product.imageUrl || images[0] || fallbackImage,
+    mainImage: product.mainImage || product.imageUrl || images[0] || fallbackImage,
+    imageUrl: product.imageUrl || product.mainImage || images[0] || fallbackImage,
     images: images.length ? images : [fallbackImage],
-    status: product.stock > 0 ? (product.stock < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
+    status: stock > 0 ? (stock < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
     frameShape: product.frameShape,
     material: product.material,
     gender: product.gender,
@@ -248,7 +216,7 @@ const productDocumentToProduct = (product: ProductDocument): Product => {
     updatedAt: product.updatedAt,
     originalPrice: product.originalPrice,
     discountedPrice: product.discountedPrice,
-    variants: product.variants as Product['variants']
+    variants
   };
 };
 
@@ -523,7 +491,8 @@ export default function App() {
     }
   };
 
-  const handleUpdateProduct = (updatedProd: Product) => {
+  const handleUpdateProduct = async (updatedProd: Product) => {
+    const previousProducts = products;
     setProducts(prev => prev.map(p => p.id === updatedProd.id ? updatedProd : p));
     setEditingProduct(null);
 
@@ -538,6 +507,28 @@ export default function App() {
       },
       ...prev
     ]);
+
+    try {
+      const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+      const { id, createdAt, updatedAt, reviews, rating, ratingCount, arTryOnRating, arTryOnRatingCount, ...productData } = updatedProd;
+      const productDocument = removeUndefinedFields({
+        ...productData,
+        sizes: [],
+        vendorId: updatedProd.vendorId || profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO',
+        vendorName: updatedProd.vendorName || profileInfo.companyName || profileInfo.storeName,
+        ownerName: profileInfo.ownerName,
+        vendorLocation: profileInfo.businessAddress,
+        vendorPhone: profileInfo.contactDetails,
+        updatedAt: serverTimestamp()
+      });
+
+      await setDoc(doc(db, 'products', id), productDocument, { merge: true });
+    } catch (err) {
+      setProducts(previousProducts);
+      // eslint-disable-next-line no-console
+      console.error('Failed to update product in Firestore', err);
+      throw err;
+    }
   };
 
   const handleEditTrigger = (prod: Product) => {
