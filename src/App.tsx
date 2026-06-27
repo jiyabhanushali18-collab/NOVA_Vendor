@@ -161,6 +161,16 @@ const readString = (...values: unknown[]) => {
   return '';
 };
 
+const extractVariantColors = (variants: ProductDocument['variants']) => {
+  if (!Array.isArray(variants)) return [];
+
+  return Array.from(new Set(variants.flatMap(variant => {
+    if (!variant || typeof variant !== 'object') return [];
+    const color = readString((variant as any).color, (variant as any).colour);
+    return color ? [color] : [];
+  })));
+};
+
 const readVariantImages = (variants: ProductDocument['variants']) => {
   if (!Array.isArray(variants)) return [];
 
@@ -211,6 +221,10 @@ const productDocumentToProduct = (product: ProductDocument): Product => {
     product.imageUrl
   ].filter(Boolean)));
 
+  const variantColors = extractVariantColors(product.variants);
+  const colors = Array.from(new Set([...(product.colors || []), ...variantColors].filter(Boolean)));
+  const primaryColor = readString(product.color) || colors[0] || 'Default';
+
   return {
     id: product.id,
     name: product.name || 'Untitled Product',
@@ -218,8 +232,8 @@ const productDocumentToProduct = (product: ProductDocument): Product => {
     category: product.category || 'Uncategorized',
     price: product.price,
     stock: product.stock,
-    color: product.color,
-    colors: product.colors,
+    color: primaryColor,
+    colors: colors.length ? colors : undefined,
     description: product.description,
     imageUrl: product.imageUrl || images[0] || fallbackImage,
     images: images.length ? images : [fallbackImage],
@@ -347,7 +361,7 @@ export default function App() {
     );
 
     return unsubscribe;
-  }, [isLoggedIn]);
+  }, [isLoggedIn, profileInfo]);
 
   // Realtime reviews listener — keeps product ratings & reviews in sync
   useEffect(() => {

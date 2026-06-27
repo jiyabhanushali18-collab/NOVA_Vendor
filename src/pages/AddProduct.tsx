@@ -21,6 +21,13 @@ interface AddProductProps {
   onUpdateProduct?: (product: Product) => void;
 }
 
+const createVariantId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `variant-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 export default function AddProduct({ onAddProduct, setActiveTab, editingProduct, onUpdateProduct }: AddProductProps) {
   // Input fields status
   const [name, setName] = useState(editingProduct?.name || '');
@@ -36,8 +43,13 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   const [material, setMaterial] = useState(editingProduct?.material || 'Standard');
   const [gender, setGender] = useState(editingProduct?.gender || 'Unisex');
   const [variants, setVariants] = useState<ProductVariant[]>(() => {
-    if (editingProduct?.variants && editingProduct.variants.length) return editingProduct.variants;
-    return [{ color: editingProduct?.color || '', images: editingProduct?.imageUrl ? [editingProduct.imageUrl] : [] }];
+    if (editingProduct?.variants && editingProduct.variants.length) {
+      return editingProduct.variants.map(variant => ({
+        ...variant,
+        id: variant.id || createVariantId()
+      }));
+    }
+    return [{ id: createVariantId(), color: editingProduct?.color || '', images: editingProduct?.imageUrl ? [editingProduct.imageUrl] : [] }];
   });
   const [mainImages, setMainImages] = useState<string[]>(() => {
     if (editingProduct?.images && editingProduct.images.length) {
@@ -57,18 +69,18 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   // face-shape compatibility removed for clothing / AR try-on
 
   const addVariant = () => {
-    setVariants(prev => [...prev, { color: '', images: [] }]);
+    setVariants(prev => [...prev, { id: createVariantId(), color: '', images: [] }]);
   };
 
-  const removeVariant = (index: number) => {
-    setVariants(prev => prev.filter((_, i) => i !== index));
+  const removeVariant = (variantId: string) => {
+    setVariants(prev => prev.filter(variant => variant.id !== variantId));
   };
 
-  const updateVariantColor = (index: number, colorVal: string) => {
-    setVariants(prev => prev.map((v, i) => i === index ? { ...v, color: colorVal } : v));
+  const updateVariantColor = (variantId: string, colorVal: string) => {
+    setVariants(prev => prev.map(variant => variant.id === variantId ? { ...variant, color: colorVal } : variant));
   };
 
-  const updateVariantImages = (index: number, files: FileList | null) => {
+  const updateVariantImages = (variantId: string, files: FileList | null) => {
     if (!files) return;
     const urls: string[] = [];
     const filesByPreviewUrl: Record<string, File> = {};
@@ -79,7 +91,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
       filesByPreviewUrl[url] = f;
     }
     setImageFiles(prev => ({ ...prev, ...filesByPreviewUrl }));
-    setVariants(prev => prev.map((v, i) => i === index ? { ...v, images: [...v.images, ...urls] } : v));
+    setVariants(prev => prev.map(variant => variant.id === variantId ? { ...variant, images: [...variant.images, ...urls] } : variant));
   };
 
   const updateMainImages = (files: FileList | null) => {
@@ -99,11 +111,11 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
     }
   };
 
-  const removeVariantImage = (vIndex: number, imgIndex: number) => {
-    setVariants(prev => prev.map((v, i) => {
-      if (i !== vIndex) return v;
-      const images = v.images.filter((_, idx) => idx !== imgIndex);
-      const removedUrl = v.images[imgIndex];
+  const removeVariantImage = (variantId: string, imgIndex: number) => {
+    setVariants(prev => prev.map(variant => {
+      if (variant.id !== variantId) return variant;
+      const images = variant.images.filter((_, idx) => idx !== imgIndex);
+      const removedUrl = variant.images[imgIndex];
       if (removedUrl) {
         setImageFiles(current => {
           const next = { ...current };
@@ -111,7 +123,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
           return next;
         });
       }
-      return { ...v, images };
+      return { ...variant, images };
     }));
   };
 
@@ -202,8 +214,33 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         color: variant.color || color || 'Default',
         images: [...variant.images]
       }));
-    if (normalizedVariants.length && normalizedVariants[0].images.length === 0 && mainImages.length) {
-      normalizedVariants[0].images = [...mainImages];
+    
+    // Assign main images to variants intelligently
+    if (normalizedVariants.length && mainImages.length) {
+      const primaryColorTrim = (color || '').trim();
+      
+      // Separate variants with images vs without
+      const variantsWithImages = normalizedVariants.filter(v => v.images && v.images.length > 0);
+      const variantsWithoutImages = normalizedVariants.filter(v => !v.images || v.images.length === 0);
+      
+      // If some variants have no images, assign main images to them
+      if (variantsWithoutImages.length > 0) {
+        // First, try to assign to the primary color variant
+        const primaryColorIdx = normalizedVariants.findIndex(v => 
+          (v.color || '').trim().toLowerCase() === primaryColorTrim.toLowerCase()
+        );
+        
+        if (primaryColorIdx !== -1 && (!normalizedVariants[primaryColorIdx].images || normalizedVariants[primaryColorIdx].images.length === 0)) {
+          normalizedVariants[primaryColorIdx].images = [...mainImages];
+          variantsWithoutImages.splice(variantsWithoutImages.indexOf(normalizedVariants[primaryColorIdx]), 1);
+        }
+        
+        // For remaining variants without images, distribute main images to all of them
+        // (so each color variant has the same product images available)
+        variantsWithoutImages.forEach(variant => {
+          variant.images = [...mainImages];
+        });
+      }
     }
 
     // validate variants: at least one variant and each must have >=1 image
@@ -592,12 +629,12 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
           <div className="space-y-4">
             {variants.map((v, idx) => (
-              <div key={idx} className="border rounded-xl p-4">
+              <div key={v.id || idx} className="border rounded-xl p-4">
                 <div className="flex items-center gap-4 mb-3">
                   <input
                     type="text"
                     value={v.color}
-                    onChange={e => updateVariantColor(idx, e.target.value)}
+                    onChange={e => updateVariantColor(v.id || '', e.target.value)}
                     placeholder="Color name (e.g. Red)"
                     className="flex-1 bg-white/40 border border-primary/20 rounded-xl px-4 py-2 outline-none"
                   />
@@ -608,19 +645,19 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
                         type="file"
                         accept="image/*"
                         multiple
-                        onChange={e => updateVariantImages(idx, e.target.files)}
+                        onChange={e => updateVariantImages(v.id || '', e.target.files)}
                         className="hidden"
                       />
                     </label>
-                    <button type="button" onClick={() => removeVariant(idx)} className="px-3 py-2 bg-rose-50 rounded text-rose-600">Remove</button>
+                    <button type="button" onClick={() => removeVariant(v.id || '')} className="px-3 py-2 bg-rose-50 rounded text-rose-600">Remove</button>
                   </div>
                 </div>
 
                 <div className="flex gap-3 flex-wrap">
                   {v.images && v.images.length ? v.images.map((img, i) => (
-                    <div key={i} className="w-24 h-24 bg-slate-100 rounded overflow-hidden relative">
+                    <div key={`${v.id || idx}-${i}`} className="w-24 h-24 bg-slate-100 rounded overflow-hidden relative">
                       <img src={img} alt={`variant-${idx}-${i}`} className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => removeVariantImage(idx, i)} className="absolute top-1 right-1 bg-black/40 text-white rounded-full p-1">×</button>
+                      <button type="button" onClick={() => removeVariantImage(v.id || '', i)} className="absolute top-1 right-1 bg-black/40 text-white rounded-full p-1">×</button>
                     </div>
                   )) : (
                     <div className="text-sm text-slate-400">No images yet — upload at least one.</div>
