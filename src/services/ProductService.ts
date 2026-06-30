@@ -26,9 +26,19 @@ export interface ProductDocument {
   color: string;
   colors?: string[];
   description: string;
+  fabric?: string;
+  fit?: string;
+  gender?: string;
+  occasion?: string;
+  season?: string;
+  pattern?: string;
+  stretch?: string;
+  sleeveType?: string;
+  neckType?: string;
+  careInstructions?: string;
+  tags?: string[];
   frameShape?: string;
   material?: string;
-  gender?: string;
   sku: string;
   variants?: ProductVariantDocument[];
   status?: string;
@@ -38,6 +48,7 @@ export interface ProductDocument {
 
 export interface ProductVariantDocument {
   color: string;
+  sizes?: string[];
   images: string[];
   stock?: number;
 }
@@ -192,6 +203,7 @@ const readVariants = (value: unknown): ProductVariantDocument[] | undefined => {
 
     const data = variant as any;
     const color = readString(data.color, data.colour, data.name);
+    const sizes = readSizes(data.sizes || data.availableSizes || data.size);
     const images = readImageStrings(data.images)
       .concat(readImageStrings(data.imageUrls))
       .concat(readImageStrings(data.photos))
@@ -209,6 +221,7 @@ const readVariants = (value: unknown): ProductVariantDocument[] | undefined => {
 
     return [{
       color: color || 'Default',
+      sizes: sizes.length ? sizes : undefined,
       images: normalizedImages,
       stock
     }];
@@ -238,9 +251,19 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
     color: readString(data.color, data.colour),
     colors: readStrings(data.colors),
     description: readString(data.description, data.details),
+    fabric: readString(data.fabric) || undefined,
+    fit: readString(data.fit) || undefined,
+    gender: readString(data.gender) || undefined,
+    occasion: readString(data.occasion) || undefined,
+    season: readString(data.season) || undefined,
+    pattern: readString(data.pattern) || undefined,
+    stretch: readString(data.stretch) || undefined,
+    sleeveType: readString(data.sleeveType) || undefined,
+    neckType: readString(data.neckType) || undefined,
+    careInstructions: readString(data.careInstructions) || undefined,
+    tags: readStrings(data.tags),
     frameShape: readString(data.frameShape) || undefined,
     material: readString(data.material) || undefined,
-    gender: readString(data.gender) || undefined,
     sku: readString(data.sku, data.productId),
     variants: readVariants(data.variants),
     status: readString(data.status) || undefined,

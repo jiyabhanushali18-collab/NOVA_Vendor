@@ -12,15 +12,25 @@ export interface Product {
   imageUrl: string;
   images?: string[];
   status: 'In Stock' | 'Low Stock' | 'Out of Stock';
+  fabric?: string;
+  fit?: string;
+  gender?: string;
+  occasion?: string;
+  season?: string;
+  pattern?: string;
+  stretch?: string;
+  sleeveType?: string;
+  neckType?: string;
+  careInstructions?: string;
+  tags?: string[];
   frameShape?: string;
   material?: string;
-  gender?: string;
   sku?: string;
   vendorId?: string;
   vendorName?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
-  // Variants: each variant has a color and multiple images (at least one)
+  // Variants: each variant has a color, available sizes, and multiple images
   variants?: ProductVariant[];
   // Optional pricing: original was MRP, discounted is current sale price
   originalPrice?: number;
@@ -43,6 +53,7 @@ export interface ProductReview {
 export interface ProductVariant {
   id?: string;
   color: string;
+  sizes?: string[];
   images: string[];
   stock?: number;
 }

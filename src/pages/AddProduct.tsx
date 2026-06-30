@@ -27,15 +27,24 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   // Input fields status
   const [name, setName] = useState(editingProduct?.name || '');
   const [brand, setBrand] = useState(editingProduct?.brand || '');
-  const [category, setCategory] = useState(editingProduct?.category || 'General');
+  const [category, setCategory] = useState(editingProduct ? (editingProduct.category || 'Uncategorized') : 'T-Shirts');
   const fallbackColor = editingProduct?.color || '';
   const [description, setDescription] = useState(editingProduct?.description || '');
   const [price, setPrice] = useState<number>(editingProduct?.price || 0);
   const [originalPrice, setOriginalPrice] = useState<number | ''>(editingProduct?.originalPrice ?? '');
   const [discountedPrice, setDiscountedPrice] = useState<number | ''>(editingProduct?.discountedPrice ?? '');
   const [stock, setStock] = useState<number>(editingProduct?.stock || 0);
-  const [frameShape, setFrameShape] = useState(editingProduct?.frameShape || 'Standard');
-  const [material, setMaterial] = useState(editingProduct?.material || 'Standard');
+  const [fabric, setFabric] = useState(editingProduct?.fabric || '');
+  const [fit, setFit] = useState(editingProduct?.fit || '');
+  const [occasion, setOccasion] = useState(editingProduct?.occasion || '');
+  const [season, setSeason] = useState(editingProduct?.season || '');
+  const [pattern, setPattern] = useState(editingProduct?.pattern || '');
+  const [stretch, setStretch] = useState(editingProduct?.stretch || '');
+  const [sleeveType, setSleeveType] = useState(editingProduct?.sleeveType || '');
+  const [neckType, setNeckType] = useState(editingProduct?.neckType || '');
+  const [careInstructions, setCareInstructions] = useState(editingProduct?.careInstructions || '');
+  const [tags, setTags] = useState<string[]>(() => editingProduct?.tags?.slice() || []);
+  const [tagInput, setTagInput] = useState('');
   const [gender, setGender] = useState(editingProduct?.gender || 'Unisex');
   const [variants, setVariants] = useState<ProductVariant[]>(() => {
     if (editingProduct?.variants && editingProduct.variants.length) {
@@ -63,7 +72,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   // face-shape compatibility removed for clothing / AR try-on
 
   const addVariant = () => {
-    setVariants(prev => [...prev, { id: createVariantId(), color: '', images: [], stock: undefined }]);
+    setVariants(prev => [...prev, { id: createVariantId(), color: '', sizes: [], images: [], stock: undefined }]);
   };
 
   const removeVariant = (variantId: string) => {
@@ -80,6 +89,17 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         ? { ...variant, stock: stockValue === '' ? undefined : Math.max(0, Number(stockValue) || 0) }
         : variant
     ));
+  };
+
+  const updateVariantSizes = (variantId: string, size: string) => {
+    setVariants(prev => prev.map(variant => {
+      if (variant.id !== variantId) return variant;
+      const sizes = variant.sizes ? [...variant.sizes] : [];
+      if (sizes.includes(size)) {
+        return { ...variant, sizes: sizes.filter(item => item !== size) };
+      }
+      return { ...variant, sizes: [...sizes, size] };
+    }));
   };
 
   const updateVariantImages = (variantId: string, files: FileList | null) => {
@@ -193,9 +213,10 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
       return;
     }
 
-    const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor || 'Default', images: [], stock }])
+const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor || 'Default', sizes: [], images: [], stock }])
       .map(variant => ({
         color: (variant.color || fallbackColor || 'Default').trim(),
+        sizes: variant.sizes?.filter(Boolean) || [],
         images: [...variant.images],
         stock: variant.stock
       }));
@@ -230,6 +251,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
       const variantsWithImages = savedVariants.map(variant => ({
         color: variant.color.trim(),
+        sizes: variant.sizes?.filter(Boolean) || [],
         images: variant.images,
         stock: variant.stock === undefined ? undefined : Math.max(0, Number(variant.stock) || 0)
       }));
@@ -248,6 +270,17 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         name,
         brand,
         category,
+        fabric: fabric || undefined,
+        fit: fit || undefined,
+        gender,
+        occasion: occasion || undefined,
+        season: season || undefined,
+        pattern: pattern || undefined,
+        stretch: stretch || undefined,
+        sleeveType: sleeveType || undefined,
+        neckType: neckType || undefined,
+        careInstructions: careInstructions.trim() || undefined,
+        tags: tags.length ? tags : undefined,
         color: primaryColor,
         colors: variantColors.length ? variantColors : [primaryColor],
         description,
@@ -259,9 +292,6 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
         mainImage: primaryImage,
         imageUrl: primaryImage,
         images: productImages.length ? productImages : [primaryImage],
-        frameShape,
-        material,
-        gender,
         sku: 'NV-' + Math.floor(1000 + Math.random() * 9000),
         variants: variantsWithImages,
       };
@@ -331,12 +361,31 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
                 onChange={e => setCategory(e.target.value)}
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
               >
-                <option>General</option>
-                <option>Electronics</option>
+                <option>T-Shirts</option>
+                <option>Shirts</option>
+                <option>Polo Shirts</option>
+                <option>Hoodies</option>
+                <option>Sweatshirts</option>
+                <option>Jackets</option>
+                <option>Jeans</option>
+                <option>Trousers</option>
+                <option>Shorts</option>
+                <option>Dresses</option>
+                <option>Kurtis</option>
+                <option>Sarees</option>
+                <option>Co-ord Sets</option>
+                <option>Crop Tops</option>
+                <option>Skirts</option>
+                <option>Blazers</option>
+                <option>Ethnic Wear</option>
+                <option>Footwear</option>
+                <option>Bags</option>
+                <option>Watches</option>
+                <option>Sunglasses</option>
+                <option>Caps</option>
+                <option>Belts</option>
+                <option>Jewellery</option>
                 <option>Accessories</option>
-                <option>Apparel</option>
-                <option>Home</option>
-                <option>Sport</option>
               </select>
             </div>
             <div className="flex flex-col gap-2 md:col-span-2">
@@ -437,36 +486,55 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">ITEM STYLE</label>
-              <select
-                value={frameShape}
-                onChange={e => setFrameShape(e.target.value)}
-                className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
-              >
-                <option>Standard</option>
-                <option>Modern</option>
-                <option>Sport</option>
-                <option>Minimal</option>
-                <option>Premium</option>
-                <option>Performance</option>
-              </select>
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">CATEGORY</label>
+              <input
+                readOnly
+                value={category}
+                className="bg-slate-100/80 border border-slate-200 rounded-xl px-4 py-3 font-medium text-slate-700 outline-none cursor-not-allowed"
+              />
             </div>
-            
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">MATERIAL</label>
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">FABRIC</label>
               <select
-                value={material}
-                onChange={e => setMaterial(e.target.value)}
+                value={fabric}
+                onChange={e => setFabric(e.target.value)}
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
               >
-                <option>Acetate</option>
-                <option>Titanium</option>
-                <option>Stainless Steel</option>
-                <option>Carbon Fiber</option>
-                <option>Bio-Resin</option>
+                <option value="">Select fabric</option>
+                <option>Cotton</option>
+                <option>Organic Cotton</option>
+                <option>Polyester</option>
+                <option>Linen</option>
+                <option>Rayon</option>
+                <option>Denim</option>
+                <option>Silk</option>
+                <option>Wool</option>
+                <option>Viscose</option>
+                <option>Nylon</option>
+                <option>Lycra</option>
+                <option>Spandex</option>
+                <option>Leather</option>
+                <option>Faux Leather</option>
+                <option>Blend</option>
               </select>
             </div>
-
+            <div className="flex flex-col gap-2">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">FIT</label>
+              <select
+                value={fit}
+                onChange={e => setFit(e.target.value)}
+                className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
+              >
+                <option value="">Select fit</option>
+                <option>Slim Fit</option>
+                <option>Regular Fit</option>
+                <option>Relaxed Fit</option>
+                <option>Oversized</option>
+                <option>Skinny</option>
+                <option>Straight</option>
+                <option>Loose</option>
+              </select>
+            </div>
             <div className="flex flex-col gap-2">
               <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">GENDER</label>
               <select
@@ -477,15 +545,159 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
                 <option>Unisex</option>
                 <option>Men</option>
                 <option>Women</option>
+                <option>Kids</option>
               </select>
             </div>
+            <div className="flex flex-col gap-2">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">OCCASION</label>
+              <select
+                value={occasion}
+                onChange={e => setOccasion(e.target.value)}
+                className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
+              >
+                <option value="">Select occasion</option>
+                <option>Casual</option>
+                <option>Formal</option>
+                <option>Office</option>
+                <option>Party</option>
+                <option>Sports</option>
+                <option>Ethnic</option>
+                <option>Daily Wear</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">SEASON</label>
+              <select
+                value={season}
+                onChange={e => setSeason(e.target.value)}
+                className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
+              >
+                <option value="">Select season</option>
+                <option>Summer</option>
+                <option>Winter</option>
+                <option>Monsoon</option>
+                <option>All Season</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">PATTERN</label>
+              <select
+                value={pattern}
+                onChange={e => setPattern(e.target.value)}
+                className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
+              >
+                <option value="">Select pattern</option>
+                <option>Solid</option>
+                <option>Printed</option>
+                <option>Graphic</option>
+                <option>Checked</option>
+                <option>Striped</option>
+                <option>Floral</option>
+                <option>Embroidered</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">STRETCH</label>
+              <select
+                value={stretch}
+                onChange={e => setStretch(e.target.value)}
+                className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
+              >
+                <option value="">Select stretch</option>
+                <option>Non Stretch</option>
+                <option>Stretch</option>
+                <option>Medium Stretch</option>
+                <option>High Stretch</option>
+              </select>
+            </div>
+            <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="flex flex-col gap-2">
+                <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">SLEEVE TYPE</label>
+                <select
+                  value={sleeveType}
+                  onChange={e => setSleeveType(e.target.value)}
+                  className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
+                >
+                  <option value="">Select sleeve type</option>
+                  <option>Half Sleeve</option>
+                  <option>Full Sleeve</option>
+                  <option>Sleeveless</option>
+                  <option>3/4 Sleeve</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">NECK TYPE</label>
+                <select
+                  value={neckType}
+                  onChange={e => setNeckType(e.target.value)}
+                  className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
+                >
+                  <option value="">Select neck type</option>
+                  <option>Round Neck</option>
+                  <option>Crew Neck</option>
+                  <option>V Neck</option>
+                  <option>Polo</option>
+                  <option>Mandarin</option>
+                  <option>Hooded</option>
+                </select>
+              </div>
+            </div>
+            <div className="md:col-span-3 flex flex-col gap-2">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">CARE INSTRUCTIONS</label>
+              <textarea
+                value={careInstructions}
+                onChange={e => setCareInstructions(e.target.value)}
+                rows={4}
+                placeholder="e.g. Machine wash cold, do not bleach"
+                className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 resize-none"
+              />
+            </div>
+            <div className="md:col-span-3 flex flex-col gap-3">
+              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">TAGS</label>
+              <div className="flex flex-wrap gap-2 items-center">
+                {tags.map(tag => (
+                  <span key={tag} className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center gap-2">
+                    {tag}
+                    <button type="button" onClick={() => setTags(current => current.filter(item => item !== tag))} className="font-bold text-primary">×</button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const next = tagInput.trim();
+                      if (next && !tags.includes(next)) {
+                        setTags(prev => [...prev, next]);
+                      }
+                      setTagInput('');
+                    }
+                  }}
+                  placeholder="Add a tag and press Enter"
+                  className="flex-1 bg-white/40 border border-primary/20 rounded-xl px-4 py-3 outline-none text-slate-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = tagInput.trim();
+                    if (next && !tags.includes(next)) {
+                      setTags(prev => [...prev, next]);
+                    }
+                    setTagInput('');
+                  }}
+                  className="px-4 py-3 bg-primary text-white rounded-xl font-semibold"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
           </div>
-
-          {/* Variants handled below */}
         </section>
 
-        {/* Action bounds buttons footer */}
-        
         {/* Variants (color -> multiple images) */}
         <section className="bg-white/60 backdrop-blur-md rounded-2xl p-6 border border-slate-200/50">
           <div className="flex items-center gap-3 mb-6">
@@ -496,28 +708,50 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
           <div className="space-y-4">
             {variants.map((v, idx) => (
               <div key={v.id || idx} className="border rounded-xl p-4">
-                <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
-                  <input
-                    type="text"
-                    value={v.color}
-                    onChange={e => updateVariantColor(v.id || '', e.target.value)}
-                    placeholder="Color name (e.g. Red)"
-                    className="flex-1 bg-white/40 border border-primary/20 rounded-xl px-4 py-2 outline-none"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    value={v.stock ?? ''}
-                    onChange={e => updateVariantStock(v.id || '', e.target.value)}
-                    placeholder="Variant stock"
-                    className="w-full md:w-36 bg-white/40 border border-primary/20 rounded-xl px-4 py-2 outline-none"
-                  />
-                  <div className="flex items-center gap-2">
-                    <label className="px-3 py-2 bg-primary/10 rounded cursor-pointer text-sm">
+                <div className="flex flex-col gap-3 mb-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                    <input
+                      type="text"
+                      value={v.color}
+                      onChange={e => updateVariantColor(v.id || '', e.target.value)}
+                      placeholder="Color name (e.g. Black)"
+                      className="flex-1 bg-white/40 border border-primary/20 rounded-xl px-4 py-2 outline-none"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={v.stock ?? ''}
+                      onChange={e => updateVariantStock(v.id || '', e.target.value)}
+                      placeholder="Variant stock"
+                      className="w-full md:w-36 bg-white/40 border border-primary/20 rounded-xl px-4 py-2 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Available Sizes</div>
+                    <div className="flex flex-wrap gap-2">
+                      {['XS','S','M','L','XL','XXL'].map(size => {
+                        const active = v.sizes?.includes(size);
+                        return (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => updateVariantSizes(v.id || '', size)}
+                            className={`px-3 py-2 rounded-full border text-xs font-semibold transition-all ${active ? 'bg-primary text-white border-transparent' : 'bg-white/80 text-slate-700 border-slate-200 hover:border-primary'}`}
+                          >
+                            {size}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="px-3 py-2 bg-primary/10 rounded cursor-pointer text-sm flex items-center gap-2">
                       Upload Images
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         multiple
                         onChange={e => updateVariantImages(v.id || '', e.target.files)}
                         className="hidden"
