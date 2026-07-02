@@ -12,6 +12,8 @@ import {
   ArrowRight,
   Sparkles,
   Eye,
+  Filter,
+  Search,
   Activity as ActivityIcon,
   ShoppingCart,
   Package
@@ -36,9 +38,26 @@ export default function Dashboard({
   setActiveTab 
 }: DashboardProps) {
   const [selectedRange, setSelectedRange] = useState('Last 30 Days');
+  const [searchQuery, setSearchQuery] = useState('');
   const [hoveredDataPoint, setHoveredDataPoint] = useState<{ x: number; y: number; val1: string; val2: string; label: string } | null>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
+
+  const vendorCounts = products.reduce((map, product) => {
+    const vendorName = product.vendorName?.trim() || profileInfo.storeName || profileInfo.companyName || 'Unknown Vendor';
+    const count = map.get(vendorName) ?? 0;
+    map.set(vendorName, count + 1);
+    return map;
+  }, new Map<string, number>());
+
+  const vendors = [
+    { id: 'all', label: 'All Vendors', count: products.length },
+    ...Array.from(vendorCounts.entries()).map(([name, count]) => ({ id: name, label: name, count }))
+  ];
+
+  const topRatedProducts = [...products]
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+    .slice(0, 3);
 
   // Derive metrics dynamically from state to show craftsmanship!
   const totalProductsCount = products.reduce((acc, p) => acc + p.stock, 0) + 750; // default offset for display consistency
@@ -83,6 +102,125 @@ export default function Dashboard({
             <Sparkles className="w-4 h-4" />
             <span>Add Product</span>
           </button>
+        </div>
+      </section>
+
+      <section className="space-y-6">
+        <div className="bg-slate-950/95 border border-white/10 rounded-3xl p-5 text-white shadow-2xl shadow-slate-950/10">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-violet-300/30 bg-violet-400/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.25em] text-violet-200">
+                NOVA Showroom
+              </div>
+              <h3 className="mt-4 text-2xl sm:text-3xl font-display font-extrabold tracking-tight text-white">
+                Discover brands, vendor drops and curated collections
+              </h3>
+              <p className="mt-2 text-sm text-slate-300 max-w-2xl">
+                Explore the latest drops from verified partners and curate your next launch with confidence.
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab('products')}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 transition"
+            >
+              <Sparkles className="w-4 h-4" />
+              Explore Products
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-[1.5fr_0.8fr]">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search products, vendors..."
+                className="w-full rounded-3xl border border-white/15 bg-slate-900/80 py-4 pl-12 pr-4 text-sm text-white placeholder:text-slate-400 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20"
+              />
+            </div>
+            <button
+              className="flex items-center justify-center gap-2 rounded-3xl border border-white/15 bg-white/5 px-4 py-4 text-sm font-semibold text-white hover:bg-white/10 transition"
+            >
+              <Filter className="w-4 h-4" />
+              Filters
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-900">Our Vendors</h3>
+            <button
+              onClick={() => setActiveTab('products')}
+              className="text-sm font-semibold text-primary hover:text-secondary transition"
+            >
+              View all
+            </button>
+          </div>
+
+          <div className="overflow-x-auto pb-1">
+            <div className="flex gap-4 min-w-max">
+              {vendors.map((vendor) => (
+                <button
+                  key={vendor.id}
+                  type="button"
+                  onClick={() => setActiveTab(vendor.id === 'all' ? 'dashboard' : 'products')}
+                  className="min-w-[180px] rounded-3xl border border-slate-200/50 bg-white/90 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="rounded-2xl bg-slate-100 p-3 text-slate-600">
+                      <Package className="w-5 h-5" />
+                    </div>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      {vendor.id === 'all' ? 'All Vendors' : `${vendor.count} Products`}
+                    </span>
+                  </div>
+                  <div className="mt-6 text-sm font-bold text-slate-900">
+                    {vendor.label}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200/70 bg-slate-950/95 p-5 text-white shadow-lg shadow-slate-950/10">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold">Top Rated Products</h3>
+            <button className="text-sm font-semibold text-violet-300 hover:text-violet-100">
+              View all
+            </button>
+          </div>
+
+          {topRatedProducts.length === 0 ? (
+            <div className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/95 p-6 text-sm text-slate-400">
+              No top rated products available yet.
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4">
+              {topRatedProducts.map((product) => (
+                <div
+                  key={product.id}
+                  className="rounded-3xl border border-slate-800 bg-slate-900/95 p-4 flex items-center gap-4"
+                >
+                  <div className="h-16 w-16 overflow-hidden rounded-3xl bg-slate-800 shrink-0">
+                    <img
+                      src={product.imageUrl || product.mainImage || product.images?.[0] || ''}
+                      alt={product.name}
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-semibold text-sm text-white truncate">{product.name}</h4>
+                    <p className="text-[11px] text-slate-400">{product.brand}</p>
+                    <p className="mt-2 text-sm font-bold text-slate-100">₹{product.price.toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -368,7 +506,7 @@ export default function Dashboard({
                     <td className="py-4 block md:table-cell">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-0.5 overflow-hidden shadow-sm shrink-0">
-                          <img className="w-full h-full object-cover rounded" src={product.imageUrl} alt={product.name} referrerPolicy="no-referrer" />
+                          <img className="w-full h-full object-cover rounded" src={product.imageUrl || product.mainImage || product.images?.[0] || ''} alt={product.name} referrerPolicy="no-referrer" />
                         </div>
                         <span className="font-bold text-slate-700 text-sm">{product.name}</span>
                       </div>

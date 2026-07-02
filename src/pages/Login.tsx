@@ -250,6 +250,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           } catch (uploadErr) {
             // eslint-disable-next-line no-console
             console.error('Failed to upload vendor logo to Firebase Storage', uploadErr);
+            setError('Failed to upload vendor logo. Please try again or choose a different image.');
+            setIsLoading(false);
+            return;
           }
         }
 

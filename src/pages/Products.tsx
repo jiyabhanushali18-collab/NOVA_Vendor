@@ -188,7 +188,7 @@ export default function Products({ products, profileInfo, isLoading = false, set
                             <img 
                               alt={product.name} 
                               className="w-full h-full object-cover rounded" 
-                              src={product.imageUrl}
+                              src={product.imageUrl || product.mainImage || product.images?.[0] || ''}
                               referrerPolicy="no-referrer"
                             />
                           </div>

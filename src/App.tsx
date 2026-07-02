@@ -33,13 +33,23 @@ const readLocalProfile = () => {
 
 const fetchVendorProfile = async (uid: string): Promise<ProfileInfo | null> => {
   try {
-    const { doc, getDoc } = await import('firebase/firestore');
+    const { collection, doc, getDoc, getDocs, query, where } = await import('firebase/firestore');
     // Fetch current vendor details from Firestore owner collection
     const ownerDoc = await getDoc(doc(db, 'owner', uid));
-    if (!ownerDoc.exists()) {
+    let data = ownerDoc.exists() ? (ownerDoc.data() as any) : null;
+
+    // Fallback to vendors collection if the owner document is missing or incomplete
+    if (!data || !data.logoUrl) {
+      const vendorSnapshot = await getDocs(query(collection(db, 'vendors'), where('uid', '==', uid)));
+      if (!vendorSnapshot.empty) {
+        data = vendorSnapshot.docs[0].data() as any;
+      }
+    }
+
+    if (!data) {
       return null;
     }
-    const data = ownerDoc.data() as any;
+
     return {
       storeName: data.companyName || data.storeName || '',
       companyName: data.companyName || data.storeName || '',

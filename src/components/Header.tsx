@@ -18,16 +18,18 @@ export default function Header({
 }: HeaderProps) {
   if (!isLoggedIn) return null;
 
+  const avatarFallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(profileInfo.companyName || profileInfo.storeName || profileInfo.ownerName)}&background=451ebb&color=fff&bold=true`;
+
   const getPageTitle = () => {
     switch(activeTab) {
-      case 'dashboard': return 'Vendor Portal';
+      case 'dashboard': return 'NOVA Showroom';
       case 'products': return 'Products';
       case 'addProduct': return 'Add Product';
       case 'orders': return 'Orders';
       case 'analytics': return 'Analytics';
       case 'profile': return 'Profile';
       case 'settings': return 'Settings';
-      default: return 'Vendor Portal';
+      default: return 'NOVA Showroom';
     }
   };
 
@@ -51,7 +53,7 @@ export default function Header({
           <Search className="text-slate-400 w-4 h-4 mr-2" />
           <input 
             className="bg-transparent border-none focus:outline-none text-sm w-44 lg:w-64 placeholder-slate-400 text-slate-700" 
-            placeholder="Search orders, products..." 
+            placeholder="Search products, vendors..." 
             type="text"
           />
         </div>
@@ -77,16 +79,18 @@ export default function Header({
             </div>
             
             <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary/20 transition-all group-hover:border-primary/50 group-active:scale-95 bg-slate-100 flex items-center justify-center">
-              {profileInfo.logoUrl ? (
-                <img 
-                  alt="User profile avatar" 
-                  className="w-full h-full object-cover" 
-                  src={profileInfo.logoUrl}
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <User className="w-5 h-5 text-slate-400" />
-              )}
+              <img 
+                alt="User profile avatar" 
+                className="w-full h-full object-cover" 
+                src={profileInfo.logoUrl || avatarFallbackUrl}
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (img.src !== avatarFallbackUrl) {
+                    img.src = avatarFallbackUrl;
+                  }
+                }}
+              />
             </div>
           </div>
         </div>

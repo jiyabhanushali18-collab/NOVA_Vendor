@@ -38,6 +38,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
 
   // default banner image
   const defaultBannerUrl = 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&w=1200&q=80';
+  const avatarFallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(profileInfo.companyName || profileInfo.storeName || profileInfo.ownerName)}&background=451ebb&color=fff&bold=true`;
 
   const handleLogoChange = (files: FileList | null) => {
     const file = files?.[0];
@@ -145,8 +146,14 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
               <img 
                 alt="Store Logo" 
                 className="w-full h-full object-cover rounded-2xl" 
-                src={logoUrl}
+                src={logoUrl || avatarFallbackUrl}
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (img.src !== avatarFallbackUrl) {
+                    img.src = avatarFallbackUrl;
+                  }
+                }}
               />
               <label
                 htmlFor="profileLogo"
