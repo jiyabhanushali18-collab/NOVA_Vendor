@@ -21,9 +21,10 @@ interface ProductsProps {
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setActiveTab: (tab: string) => void;
   onEditProduct?: (product: Product) => void;
+  onDeleteProduct?: (productId: string) => Promise<void>;
 }
 
-export default function Products({ products, profileInfo, isLoading = false, setProducts, setActiveTab, onEditProduct }: ProductsProps) {
+export default function Products({ products, profileInfo, isLoading = false, setProducts, setActiveTab, onEditProduct, onDeleteProduct }: ProductsProps) {
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [selectedStatus, setSelectedStatus] = useState('Status: All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,9 +73,13 @@ export default function Products({ products, profileInfo, isLoading = false, set
     currentPage * itemsPerPage
   );
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this product?")) {
-      setProducts(prev => prev.filter(p => p.id !== id));
+      if (onDeleteProduct) {
+        await onDeleteProduct(id);
+      } else {
+        setProducts(prev => prev.filter(p => p.id !== id));
+      }
     }
   };
 

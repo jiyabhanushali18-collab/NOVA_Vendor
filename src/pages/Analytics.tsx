@@ -11,24 +11,36 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRupees, formatRupeesCompact } from '../utils/currency';
+import { Order, Product } from '../types';
 
-export default function Analytics() {
+interface AnalyticsProps {
+  orders: Order[];
+  products: Product[];
+}
+
+export default function Analytics({ orders, products }: AnalyticsProps) {
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
-  // Month values for the bar chart
-  const barData = [
-    { label: 'JAN', height: '40%', value: formatRupeesCompact(180000), color: '#ab8ffe' },
-    { label: 'FEB', height: '55%', value: formatRupeesCompact(240000), color: '#ab8ffe' },
-    { label: 'MAR', height: '75%', value: formatRupeesCompact(320000), color: '#ab8ffe' },
-    { label: 'APR', height: '60%', value: formatRupeesCompact(290000), color: '#ab8ffe' },
-    { label: 'MAY', height: '85%', value: formatRupeesCompact(390000), color: '#ab8ffe' },
-    { label: 'JUN', height: '95%', value: formatRupeesCompact(450000), color: '#451ebb' },
-    { label: 'JUL', height: '70%', value: formatRupeesCompact(310000), color: '#ab8ffe' },
-    { label: 'AUG', height: '65%', value: formatRupeesCompact(280000), color: '#ab8ffe' }
-  ];
+  const activeOrders = orders.filter(order => order.status !== 'Cancelled');
+  const totalRevenue = activeOrders.reduce((sum, order) => sum + order.amount, 0);
+  const averageOrderValue = activeOrders.length ? totalRevenue / activeOrders.length : 0;
+  const categoryCount = products.reduce<Record<string, number>>((counts, product) => {
+    counts[product.category || 'Uncategorized'] = (counts[product.category || 'Uncategorized'] || 0) + 1;
+    return counts;
+  }, {});
+  const topCategories = Object.entries(categoryCount).sort(([, a], [, b]) => b - a).slice(0, 3);
+  const maxCategoryCount = topCategories[0]?.[1] || 1;
+  const barData = topCategories.length
+    ? topCategories.map(([label, count]) => ({
+      label: label.slice(0, 8).toUpperCase(),
+      height: `${Math.max(12, (count / maxCategoryCount) * 95)}%`,
+      value: `${count} product${count === 1 ? '' : 's'}`,
+      color: '#ab8ffe'
+    }))
+    : [{ label: 'NO DATA', height: '12%', value: 'No products yet', color: '#ab8ffe' }];
 
   const handleExport = () => {
     setIsExporting(true);
@@ -82,7 +94,7 @@ export default function Analytics() {
         <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl border border-slate-200/50 flex flex-col justify-between h-32 hover:translate-y-[-2px] transition-all duration-300">
           <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest font-display">TOTAL REVENUE</p>
           <div className="flex items-end justify-between mt-2">
-            <p className="font-display text-3xl font-extrabold text-slate-800">{formatRupeesCompact(2400000)}</p>
+            <p className="font-display text-3xl font-extrabold text-slate-800">{formatRupeesCompact(totalRevenue)}</p>
             <span className="text-primary font-bold text-xs flex items-center gap-1 bg-primary/5 px-2 py-0.5 rounded-full">
               +12.5% <TrendingUp className="w-3.5 h-3.5" />
             </span>
@@ -93,7 +105,7 @@ export default function Analytics() {
         <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl border border-slate-200/50 flex flex-col justify-between h-32 hover:translate-y-[-2px] transition-all duration-300">
           <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest font-display">ACTIVE ORDERS</p>
           <div className="flex items-end justify-between mt-2">
-            <p className="font-display text-3xl font-extrabold text-slate-800">1,284</p>
+            <p className="font-display text-3xl font-extrabold text-slate-800">{activeOrders.length.toLocaleString()}</p>
             <span className="text-primary font-bold text-xs flex items-center gap-1 bg-primary/5 px-2 py-0.5 rounded-full">
               +8.2% <TrendingUp className="w-3.5 h-3.5" />
             </span>
@@ -104,7 +116,7 @@ export default function Analytics() {
         <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl border border-slate-200/50 flex flex-col justify-between h-32 hover:translate-y-[-2px] transition-all duration-300">
           <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest font-display">CONVERSION RATE</p>
           <div className="flex items-end justify-between mt-2">
-            <p className="font-display text-3xl font-extrabold text-slate-800">3.8%</p>
+            <p className="font-display text-3xl font-extrabold text-slate-800">{products.length ? `${Math.min(100, (activeOrders.length / products.length) * 100).toFixed(1)}%` : '0%'}</p>
             <span className="text-rose-500 font-bold text-xs flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-full">
               -0.4% <TrendingDown className="w-3.5 h-3.5" />
             </span>
@@ -115,7 +127,7 @@ export default function Analytics() {
         <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl border border-slate-200/50 flex flex-col justify-between h-32 hover:translate-y-[-2px] transition-all duration-300">
           <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest font-display">AVG ORDER VALUE</p>
           <div className="flex items-end justify-between mt-2">
-            <p className="font-display text-3xl font-extrabold text-slate-800">{formatRupees(1860)}</p>
+            <p className="font-display text-3xl font-extrabold text-slate-800">{formatRupees(averageOrderValue)}</p>
             <span className="text-primary font-bold text-xs flex items-center gap-1 bg-primary/5 px-2 py-0.5 rounded-full">
               +5.1% <TrendingUp className="w-3.5 h-3.5" />
             </span>

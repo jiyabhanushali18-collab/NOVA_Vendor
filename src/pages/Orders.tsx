@@ -17,16 +17,20 @@ import {
   User,
   Trash2
 } from 'lucide-react';
-import { Order } from '../types';
+import { Order, Product } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRupees, formatRupeesCompact } from '../utils/currency';
 
 interface OrdersProps {
   orders: Order[];
   setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
+  onCreateOrder?: (order: Order) => Promise<void>;
+  onUpdateOrderStatus?: (orderId: string, status: Order['status']) => Promise<void>;
+  onDeleteOrder?: (orderId: string) => Promise<void>;
+  products?: Product[];
 }
 
-export default function Orders({ orders, setOrders }: OrdersProps) {
+export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrderStatus, onDeleteOrder, products = [] }: OrdersProps) {
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [channelFilter, setChannelFilter] = useState('All Channels');
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,7 +39,7 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
   
   // New order form fields state
   const [customerName, setCustomerName] = useState('');
-  const [productName, setProductName] = useState('Prism Core X14');
+  const [productName, setProductName] = useState(products[0]?.name || '');
   const [quantity, setQuantity] = useState(1);
   const [amount, setAmount] = useState(120);
 
@@ -61,7 +65,7 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
     currentPage * itemsPerPage
   );
 
-  const handleCreateOrder = (e: React.FormEvent) => {
+  const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName) return;
 
@@ -81,7 +85,11 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
       status: 'Pending'
     };
 
-    setOrders(prev => [newOrder, ...prev]);
+    if (onCreateOrder) {
+      await onCreateOrder(newOrder);
+    } else {
+      setOrders(prev => [newOrder, ...prev]);
+    }
     setShowNewOrderModal(false);
     setCustomerName('');
     setQuantity(1);
@@ -89,13 +97,21 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
     setCurrentPage(1);
   };
 
-  const handleStatusChange = (orderId: string, nextStatus: 'Pending' | 'Shipped' | 'Delivered' | 'Cancelled') => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o));
+  const handleStatusChange = async (orderId: string, nextStatus: 'Pending' | 'Shipped' | 'Delivered' | 'Cancelled') => {
+    if (onUpdateOrderStatus) {
+      await onUpdateOrderStatus(orderId, nextStatus);
+    } else {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o));
+    }
   };
 
-  const handleDeleteOrder = (orderId: string) => {
+  const handleDeleteOrder = async (orderId: string) => {
     if (confirm("Are you sure you want to remove this order?")) {
-      setOrders(prev => prev.filter(o => o.id !== orderId));
+      if (onDeleteOrder) {
+        await onDeleteOrder(orderId);
+      } else {
+        setOrders(prev => prev.filter(o => o.id !== orderId));
+      }
     }
   };
 
@@ -406,16 +422,27 @@ export default function Orders({ orders, setOrders }: OrdersProps) {
               </h3>
               
               <form onSubmit={handleCreateOrder} className="space-y-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Customer Name</label>
-                  <input 
-                    type="text" 
-                    value={customerName}
-                    onChange={e => setCustomerName(e.target.value)}
-                    placeholder="e.g. Elena Kovacs"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl h-11 px-3 text-sm font-semibold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all outline-none"
-                    required
-                  />
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">PRODUCT NAME</label>
+                  {products.length > 0 ? (
+                    <select
+                      value={productName}
+                      onChange={e => setProductName(e.target.value)}
+                      className="bg-white/40 border border-primary/20 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none"
+                      required
+                    >
+                      {products.map(product => <option key={product.id} value={product.name}>{product.name}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={productName}
+                      onChange={e => setProductName(e.target.value)}
+                      placeholder="Add a product first"
+                      className="bg-white/40 border border-primary/20 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none"
+                      required
+                    />
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">

@@ -256,7 +256,7 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
         stock: variant.stock === undefined ? undefined : Math.max(0, Number(variant.stock) || 0)
       }));
       const productImages = [primaryImage];
-      const variantColors = Array.from(new Set(
+      const variantColors: string[] = Array.from(new Set(
         variantsWithImages
           .map(variant => variant.color.trim())
           .filter(Boolean)

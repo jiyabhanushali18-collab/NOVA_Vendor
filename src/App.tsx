@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { initialOrders, initialActivities, initialProfile } from './store';
+import { initialActivities, initialProfile } from './store';
 import { Product, Order, Activity, ProfileInfo } from './types';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -15,6 +15,7 @@ import Analytics from './pages/Analytics';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import { subscribeToProducts, type ProductDocument } from './services/ProductService';
+import { removeOrder, subscribeToOrders, updateOrderStatus } from './services/OrderService';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -296,7 +297,7 @@ export default function App() {
   // Core application lists
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [activities, setActivities] = useState<Activity[]>(initialActivities);
   const [profileInfo, setProfileInfo] = useState<ProfileInfo>(initialProfile);
   const pendingProductsRef = useRef<Product[]>([]);
@@ -346,6 +347,29 @@ export default function App() {
         // eslint-disable-next-line no-console
         console.error('Failed to subscribe to products from Firestore', err);
       }
+    );
+
+    return unsubscribe;
+  }, [isLoggedIn, profileInfo]);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setOrders([]);
+      return;
+    }
+
+    const unsubscribe = subscribeToOrders(
+      firestoreOrders => {
+        const vendorId = profileInfo.vendorId?.trim();
+        const vendorName = (profileInfo.companyName || profileInfo.storeName || '').trim().toLowerCase();
+        setOrders(firestoreOrders.filter(order =>
+          !order.vendorId && !order.vendorName
+            ? true
+            : (vendorId && order.vendorId === vendorId)
+              || (vendorName && order.vendorName?.trim().toLowerCase() === vendorName)
+        ));
+      },
+      error => console.error('Failed to subscribe to orders from Firestore', error)
     );
 
     return unsubscribe;
@@ -551,6 +575,54 @@ export default function App() {
     }
   };
 
+  const handleDeleteProduct = async (productId: string) => {
+    const previousProducts = products;
+    setProducts(prev => prev.filter(product => product.id !== productId));
+
+    try {
+      const { deleteDoc, doc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'products', productId));
+    } catch (err) {
+      setProducts(previousProducts);
+      console.error('Failed to delete product from Firestore', err);
+      throw err;
+    }
+  };
+
+  const handleCreateOrder = async (newOrder: Order) => {
+    const vendorId = profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO';
+    const vendorName = profileInfo.companyName || profileInfo.storeName;
+    const orderData = removeUndefinedFields({
+      ...newOrder,
+      id: undefined,
+      vendorId,
+      vendorName,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    const { addDoc, collection } = await import('firebase/firestore');
+    await addDoc(collection(db, 'orders'), orderData);
+
+    const purchasedProduct = products.find(product => product.name.trim().toLowerCase() === newOrder.productName.trim().toLowerCase());
+    if (purchasedProduct) {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const nextStock = Math.max(0, purchasedProduct.stock - newOrder.quantity);
+      await updateDoc(doc(db, 'products', purchasedProduct.id), {
+        stock: nextStock,
+        status: nextStock > 15 ? 'active' : nextStock > 0 ? 'active' : 'out-of-stock',
+        updatedAt: new Date()
+      });
+    }
+  };
+
+  const handleSetOrderStatus = async (orderId: string, status: Order['status']) => {
+    await updateOrderStatus(orderId, status);
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    await removeOrder(orderId);
+  };
+
   const handleEditTrigger = (prod: Product) => {
     setEditingProduct(prod);
     setActiveTab('addProduct');
@@ -675,6 +747,7 @@ export default function App() {
               setProducts={setProducts}
               setActiveTab={handleTabChange}
               onEditProduct={handleEditTrigger}
+              onDeleteProduct={handleDeleteProduct}
             />
           )}
 
@@ -691,11 +764,15 @@ export default function App() {
             <Orders 
               orders={orders}
               setOrders={setOrders}
+                onCreateOrder={handleCreateOrder}
+                onUpdateOrderStatus={handleSetOrderStatus}
+                onDeleteOrder={handleDeleteOrder}
+                products={products}
             />
           )}
 
           {activeTab === 'analytics' && (
-            <Analytics />
+            <Analytics orders={orders} products={products} />
           )}
 
           {activeTab === 'profile' && (

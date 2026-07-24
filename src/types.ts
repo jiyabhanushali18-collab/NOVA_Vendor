@@ -68,6 +68,10 @@ export interface Order {
   amount: number;
   date: string;
   status: 'Pending' | 'Shipped' | 'Delivered' | 'Cancelled';
+  vendorId?: string;
+  vendorName?: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
 }
 
 export interface Activity {

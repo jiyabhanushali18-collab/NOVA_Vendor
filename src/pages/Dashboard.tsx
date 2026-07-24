@@ -60,10 +60,10 @@ export default function Dashboard({
     .slice(0, 3);
 
   // Derive metrics dynamically from state to show craftsmanship!
-  const totalProductsCount = products.reduce((acc, p) => acc + p.stock, 0) + 750; // default offset for display consistency
+  const totalProductsCount = products.length;
   const lowStockCount = products.filter(p => p.stock < 30).length;
-  const totalOrdersCount = orders.length + 851; // display alignment
-  const calculatedRevenue = orders.reduce((acc, o) => acc + (o.status !== 'Cancelled' ? o.amount : 0), 0) + 41240;
+  const totalOrdersCount = orders.length;
+  const calculatedRevenue = orders.reduce((acc, o) => acc + (o.status !== 'Cancelled' ? o.amount : 0), 0);
 
   // Revenue graph path info
   const points1 = [
@@ -287,7 +287,7 @@ export default function Dashboard({
           </div>
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest font-display">Low Stock Alert</p>
           <h3 className="font-display text-3xl font-extrabold mt-1 text-slate-800">
-            {lowStockCount + 8}
+            {lowStockCount}
           </h3>
           <div className="w-full h-1 bg-slate-100 rounded-full mt-4 overflow-hidden">
             <div className="h-full bg-rose-500 w-1/4 rounded-full"></div>
