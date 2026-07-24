@@ -27,6 +27,14 @@ export default function Analytics({ orders, products }: AnalyticsProps) {
   const activeOrders = orders.filter(order => order.status !== 'Cancelled');
   const totalRevenue = activeOrders.reduce((sum, order) => sum + order.amount, 0);
   const averageOrderValue = activeOrders.length ? totalRevenue / activeOrders.length : 0;
+  const salesByProduct = activeOrders.reduce<Record<string, number>>((sales, order) => {
+    const key = order.productName.trim().toLowerCase();
+    sales[key] = (sales[key] || 0) + order.quantity;
+    return sales;
+  }, {});
+  const bestSellingProducts = [...products]
+    .sort((a, b) => (salesByProduct[b.name.trim().toLowerCase()] || 0) - (salesByProduct[a.name.trim().toLowerCase()] || 0))
+    .slice(0, 5);
   const categoryCount = products.reduce<Record<string, number>>((counts, product) => {
     counts[product.category || 'Uncategorized'] = (counts[product.category || 'Uncategorized'] || 0) + 1;
     return counts;
@@ -298,71 +306,32 @@ export default function Analytics({ orders, products }: AnalyticsProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-150/40 block md:table-row-group">
-              {/* Product 1 */}
-              <tr className="hover:bg-slate-50/50 transition-all block md:table-row group">
-                <td className="py-4 block md:table-cell">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden flex items-center justify-center p-0.5 shrink-0">
-                      <img 
-                        alt="Electronics category" 
-                        className="w-full h-full object-cover rounded-lg" 
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuDGPlNuDzsiGephZeIJceReLqVVYm4gT8tZuLOhChkryUE7ABfaLJnmMm_wF1lcs5IsXTuR3XQ37dNtzKftKd6NbR_pavl0G6_jhzRXRXTChTSX-Ho2X-ED_qXMAaBXHnIQX9Edspjftg42nO7KI2oQJcdMP27Y9JkGqING29H8um1wxB8AFdpR5vIykW_EAuQuoLAP9J5ooI1Wm7iP4fsbiXWkcUk0PA_raZDZUlVGdw3NUh1SGnCoz7Kp9eQNlev9ldy07lAhDZA"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-700 text-sm">Hyper-Vision XL-1</p>
-                      <p className="text-[10px] font-display font-medium text-slate-400">SKU: NV-8821</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-4 block md:table-cell">
-                  <span className="px-2.5 py-0.5 bg-primary/10 text-[10px] font-bold text-primary rounded-full select-none">
-                    Electronics
-                  </span>
-                </td>
-                <td className="py-4 font-bold text-xs text-slate-650 block md:table-cell">1,402</td>
-                <td className="py-4 block md:table-cell">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                    <span className="text-xs font-semibold text-slate-400">High Demand</span>
-                  </div>
-                </td>
-                <td className="py-4 font-bold text-primary tracking-tight text-right block md:table-cell">{formatRupees(420600)}</td>
-              </tr>
-
-              {/* Product 2 */}
-              <tr className="hover:bg-slate-50/50 transition-all block md:table-row group">
-                <td className="py-4 block md:table-cell">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden flex items-center justify-center p-0.5 shrink-0">
-                      <img 
-                        alt="Apparel category" 
-                        className="w-full h-full object-cover rounded-lg" 
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7CykKK27-OX9czXThVuU67Qbt3p0tXFsjGwhig5hyvB6czam4xaBidiNiidsBhMcl0JVxPDhBxQ_L74MbjeSobMOCqvzxBiIHMunsDPPKnzfsljlVsA0rhLV1xhlwvN_sXfPuATZHcfzS_ucHg81f0Q8fCUt46YugpNk6uAth2elF9H8LTH8xuQD0r59alDAsO5SvvjqJpayJmvylYYJj2-nVPmZLri2CYyqZ3Zkk5tk4GFZT9XF1v8HVkPl3ZIv00eqtP5bcE60"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-700 text-sm">Titan-Edge Apparel</p>
-                      <p className="text-[10px] font-display font-medium text-slate-400">SKU: NV-3310</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-4 block md:table-cell">
-                  <span className="px-2.5 py-0.5 bg-secondary-container/10 text-[10px] font-bold text-secondary rounded-full select-none">
-                    Apparel
-                  </span>
-                </td>
-                <td className="py-4 font-bold text-xs text-slate-650 block md:table-cell">982</td>
-                <td className="py-4 block md:table-cell">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-                    <span className="text-xs font-semibold text-slate-400">Restock Soon</span>
-                  </div>
-                </td>
-                <td className="py-4 font-bold text-primary tracking-tight text-right block md:table-cell">{formatRupees(294600)}</td>
-              </tr>
+              {bestSellingProducts.map(product => {
+                const sales = salesByProduct[product.name.trim().toLowerCase()] || 0;
+                const revenue = activeOrders
+                  .filter(order => order.productName.trim().toLowerCase() === product.name.trim().toLowerCase())
+                  .reduce((sum, order) => sum + order.amount, 0);
+                return (
+                  <tr key={product.id} className="hover:bg-slate-50/50 transition-all block md:table-row group">
+                    <td className="py-4 block md:table-cell">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden flex items-center justify-center p-0.5 shrink-0">
+                          <img alt={product.name} className="w-full h-full object-cover rounded-lg" src={product.imageUrl || product.mainImage || product.images?.[0] || ''} referrerPolicy="no-referrer" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-700 text-sm">{product.name}</p>
+                          <p className="text-[10px] font-display font-medium text-slate-400">SKU: {product.sku || 'Not assigned'}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 block md:table-cell"><span className="px-2.5 py-0.5 bg-primary/10 text-[10px] font-bold text-primary rounded-full select-none">{product.category}</span></td>
+                    <td className="py-4 font-bold text-xs text-slate-650 block md:table-cell">{sales.toLocaleString()}</td>
+                    <td className="py-4 block md:table-cell"><span className="text-xs font-semibold text-slate-400">{product.status}</span></td>
+                    <td className="py-4 font-bold text-primary tracking-tight text-right block md:table-cell">{formatRupees(revenue)}</td>
+                  </tr>
+                );
+              })}
+              {bestSellingProducts.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-xs font-semibold text-slate-400">No products uploaded yet.</td></tr>}
             </tbody>
           </table>
         </div>

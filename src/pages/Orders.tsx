@@ -64,6 +64,24 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+  const activeOrderList = orders.filter(order => order.status !== 'Cancelled');
+  const netVolume = activeOrderList.reduce((sum, order) => sum + order.amount, 0);
+  const activeShipmentCount = orders.filter(order => order.status === 'Pending' || order.status === 'Shipped').length;
+  const processingDurations = orders.flatMap(order => {
+    const readTimestampMs = (value: unknown) => {
+      if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
+        return value.toMillis();
+      }
+      const timestamp = new Date(String(value || '')).getTime();
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    };
+    const createdAt = readTimestampMs(order.createdAt);
+    const updatedAt = readTimestampMs(order.updatedAt);
+    return createdAt && updatedAt && updatedAt >= createdAt ? [(updatedAt - createdAt) / 3600000] : [];
+  });
+  const averageProcessingHours = processingDurations.length
+    ? processingDurations.reduce((sum, duration) => sum + duration, 0) / processingDurations.length
+    : null;
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -374,10 +392,10 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
             <div className="p-3 bg-primary/5 text-primary border border-primary/10 rounded-xl">
               <TrendingUp className="w-4 h-4" />
             </div>
-            <span className="text-primary font-bold text-xs bg-primary/5 px-2 py-0.5 rounded-full">+12.5%</span>
+            <span className="text-primary font-bold text-xs bg-primary/5 px-2 py-0.5 rounded-full">Live</span>
           </div>
           <h3 className="text-slate-400 font-bold font-display text-[10px] mb-1 uppercase tracking-widest leading-none">Net Volume</h3>
-          <p className="font-display text-3xl font-extrabold text-primary">{formatRupeesCompact(42800)}</p>
+          <p className="font-display text-3xl font-extrabold text-primary">{formatRupeesCompact(netVolume)}</p>
         </div>
 
         {/* Stat Active shipments */}
@@ -387,10 +405,10 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
             <div className="p-3 bg-secondary/5 text-secondary border border-secondary/10 rounded-xl">
               <Package className="w-4 h-4" />
             </div>
-            <span className="text-secondary font-bold text-xs bg-secondary/5 px-2 py-0.5 rounded-full">+3.2%</span>
+            <span className="text-secondary font-bold text-xs bg-secondary/5 px-2 py-0.5 rounded-full">Live</span>
           </div>
           <h3 className="text-slate-400 font-bold font-display text-[10px] mb-1 uppercase tracking-widest leading-none">Active Shipments</h3>
-          <p className="font-display text-3xl font-extrabold text-slate-800">156</p>
+          <p className="font-display text-3xl font-extrabold text-slate-800">{activeShipmentCount.toLocaleString()}</p>
         </div>
 
         {/* Stat Avg processing */}
@@ -400,10 +418,10 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
             <div className="p-3 bg-amber-500/5 text-amber-550 border border-amber-500/10 rounded-xl">
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
-            <span className="text-amber-600 font-bold text-xs bg-amber-50 px-2 py-0.5 rounded-full">-0.4h</span>
+            <span className="text-amber-600 font-bold text-xs bg-amber-50 px-2 py-0.5 rounded-full">{processingDurations.length ? 'Live' : 'No timing data'}</span>
           </div>
           <h3 className="text-slate-400 font-bold font-display text-[10px] mb-1 uppercase tracking-widest leading-none">Avg Processing</h3>
-          <p className="font-display text-3xl font-extrabold text-slate-800">4.2h</p>
+          <p className="font-display text-3xl font-extrabold text-slate-800">{averageProcessingHours === null ? 'N/A' : `${averageProcessingHours.toFixed(1)}h`}</p>
         </div>
       </section>
 

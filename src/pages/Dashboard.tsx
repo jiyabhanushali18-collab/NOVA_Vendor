@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Product, Order, Activity, ProfileInfo } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatRupeesCompact } from '../utils/currency';
+import { formatRupees, formatRupeesCompact } from '../utils/currency';
 
 interface DashboardProps {
   products: Product[];
@@ -64,6 +64,19 @@ export default function Dashboard({
   const lowStockCount = products.filter(p => p.stock < 30).length;
   const totalOrdersCount = orders.length;
   const calculatedRevenue = orders.reduce((acc, o) => acc + (o.status !== 'Cancelled' ? o.amount : 0), 0);
+  const salesByProduct = orders.reduce<Record<string, number>>((sales, order) => {
+    if (order.status !== 'Cancelled') {
+      const key = order.productName.trim().toLowerCase();
+      sales[key] = (sales[key] || 0) + order.quantity;
+    }
+    return sales;
+  }, {});
+  const bestSellingProducts = [...products]
+    .sort((a, b) => (salesByProduct[b.name.trim().toLowerCase()] || 0) - (salesByProduct[a.name.trim().toLowerCase()] || 0))
+    .slice(0, 2);
+  const pendingShipments = orders
+    .filter(order => order.status === 'Pending' || order.status === 'Shipped')
+    .slice(0, 4);
 
   // Revenue graph path info
   const points1 = [
@@ -501,7 +514,9 @@ export default function Dashboard({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 block md:table-row-group">
-                {products.slice(0, 2).map((product) => (
+                {bestSellingProducts.map((product) => {
+                  const sales = salesByProduct[product.name.trim().toLowerCase()] || 0;
+                  return (
                   <tr key={product.id} className="hover:bg-slate-50/40 transition-colors block md:table-row">
                     <td className="py-4 block md:table-cell">
                       <div className="flex items-center gap-3">
@@ -512,10 +527,10 @@ export default function Dashboard({
                       </div>
                     </td>
                     <td className="py-4 text-xs font-semibold text-slate-500 block md:table-cell">
-                      {product.id === 'titanium-edge-x1' ? 'Crystal AR' : 'Blue Guard'}
+                      {product.category || 'Uncategorized'}
                     </td>
                     <td className="py-4 font-bold text-slate-700 text-xs block md:table-cell">
-                      {product.id === 'titanium-edge-x1' ? '1,240' : '982'}
+                      {sales.toLocaleString()}
                     </td>
                     <td className="py-4 text-xs font-bold text-slate-500 block md:table-cell">
                       {product.stock}
@@ -530,7 +545,15 @@ export default function Dashboard({
                       </span>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
+                {bestSellingProducts.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-xs font-semibold text-slate-400">
+                      No products uploaded yet.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -564,17 +587,26 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* Loading Skeletons Section - Pending Shipments */}
+      {/* Live pending shipments */}
       <div className="space-y-4">
         <h3 className="font-display text-lg font-bold text-slate-800">Pending Shipments</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 select-none pointer-events-none">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white/50 backdrop-blur-sm border border-slate-200/40 p-6 rounded-2xl animate-pulse">
-              <div className="h-3.5 bg-slate-200 rounded-full w-1/3 mb-4"></div>
-              <div className="h-7 bg-slate-200 rounded-full w-3/4 mb-5"></div>
-              <div className="h-2 bg-slate-100 rounded-full w-full"></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 select-none">
+          {pendingShipments.map(order => (
+            <div key={order.id} className="bg-white/70 backdrop-blur-sm border border-slate-200/50 p-5 rounded-2xl">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-primary">{order.id}</span>
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">{order.status}</span>
+              </div>
+              <p className="mt-4 text-sm font-bold text-slate-700 truncate">{order.productName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-400 truncate">{order.customerName} · {order.quantity} {order.quantity === 1 ? 'unit' : 'units'}</p>
+              <p className="mt-4 text-sm font-extrabold text-slate-800">{formatRupees(order.amount)}</p>
             </div>
           ))}
+          {pendingShipments.length === 0 && (
+            <div className="sm:col-span-2 lg:col-span-4 bg-white/60 border border-dashed border-slate-200 p-6 rounded-2xl text-center text-sm font-semibold text-slate-400">
+              No pending shipments.
+            </div>
+          )}
         </div>
       </div>
 
