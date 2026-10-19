@@ -52,6 +52,44 @@ const readTimestampMs = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const ORDERS_STORAGE_KEY = 'nova-vendor-orders';
+
+const readLocalOrders = (): OrderDocument[] => {
+  try {
+    const raw = window.localStorage.getItem(ORDERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeLocalOrders = (orders: OrderDocument[]) => {
+  try {
+    window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(orders));
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save orders to localStorage', e);
+  }
+};
+
+const activeSubscribers = new Set<(orders: OrderDocument[]) => void>();
+let cachedOrders: OrderDocument[] = readLocalOrders();
+
+const notifySubscribers = (orders: OrderDocument[]) => {
+  cachedOrders = orders;
+  writeLocalOrders(orders);
+  activeSubscribers.forEach(cb => {
+    try {
+      cb(orders);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Error notifying order subscriber', e);
+    }
+  });
+};
+
 const mapOrderDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): OrderDocument => {
   const data = snapshot.data();
   const customerName = readString(data.customerName, data.customer?.name, data.buyerName, data.userName) || 'Customer';
@@ -78,18 +116,108 @@ const mapOrderDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): OrderD
 export const subscribeToOrders = (
   onOrders: (orders: OrderDocument[]) => void,
   onError?: (error: Error) => void
-): Unsubscribe => onSnapshot(
-  collection(db, 'orders'),
-  snapshot => {
-    const orders = snapshot.docs
-      .map(mapOrderDocument)
-      .sort((a, b) => readTimestampMs(b.updatedAt || b.createdAt) - readTimestampMs(a.updatedAt || a.createdAt));
-    onOrders(orders);
-  },
-  error => onError?.(error)
-);
+): Unsubscribe => {
+  activeSubscribers.add(onOrders);
 
-export const updateOrderStatus = (orderId: string, status: Order['status']) =>
-  updateDoc(doc(db, 'orders', orderId), { status, updatedAt: new Date() });
+  // Immediately emit current cached orders
+  if (cachedOrders.length > 0) {
+    onOrders(cachedOrders);
+  }
 
-export const removeOrder = (orderId: string) => deleteDoc(doc(db, 'orders', orderId));
+  let firestoreUnsubscribe: Unsubscribe | undefined;
+
+  try {
+    firestoreUnsubscribe = onSnapshot(
+      collection(db, 'orders'),
+      snapshot => {
+        const firestoreOrders = snapshot.docs
+          .map(mapOrderDocument)
+          .sort((a, b) => readTimestampMs(b.updatedAt || b.createdAt) - readTimestampMs(a.updatedAt || a.createdAt));
+
+        // Merge firestore orders with any locally placed orders not yet in firestore
+        const merged = [...firestoreOrders];
+        cachedOrders.forEach(localOrd => {
+          if (!merged.some(m => m.id === localOrd.id)) {
+            merged.push(localOrd);
+          }
+        });
+        merged.sort((a, b) => readTimestampMs(b.updatedAt || b.createdAt) - readTimestampMs(a.updatedAt || a.createdAt));
+
+        notifySubscribers(merged);
+      },
+      error => {
+        // eslint-disable-next-line no-console
+        console.warn('Firestore orders sync failed (likely security rules); using local resilient order storage', error.message);
+        onError?.(error);
+        // Ensure subscriber receives current cached orders
+        onOrders(cachedOrders);
+      }
+    );
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    onError?.(error);
+    onOrders(cachedOrders);
+  }
+
+  return () => {
+    activeSubscribers.delete(onOrders);
+    if (firestoreUnsubscribe) {
+      firestoreUnsubscribe();
+    }
+  };
+};
+
+export const saveOrderRecord = async (newOrder: Order): Promise<OrderDocument> => {
+  const orderDoc: OrderDocument = {
+    ...newOrder,
+    id: newOrder.id || `#NV-${Math.floor(8834 + Math.random() * 1000)}`,
+    createdAt: newOrder.createdAt || new Date(),
+    updatedAt: new Date()
+  };
+
+  // Attempt Firestore write
+  try {
+    const { addDoc, collection: fsCollection } = await import('firebase/firestore');
+    const { id: _ignore, ...firestorePayload } = orderDoc;
+    const docRef = await addDoc(fsCollection(db, 'orders'), firestorePayload);
+    orderDoc.id = docRef.id;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Could not persist order to Firestore; persisting to local storage', err);
+  }
+
+  // Update in-memory and local cache
+  const nextOrders = [orderDoc, ...cachedOrders.filter(o => o.id !== orderDoc.id)];
+  notifySubscribers(nextOrders);
+  return orderDoc;
+};
+
+export const updateOrderStatus = async (orderId: string, status: Order['status']) => {
+  // Update local immediately
+  const nextOrders = cachedOrders.map(o =>
+    o.id === orderId ? { ...o, status, updatedAt: new Date() } : o
+  );
+  notifySubscribers(nextOrders);
+
+  // Attempt Firestore update
+  try {
+    await updateDoc(doc(db, 'orders', orderId), { status, updatedAt: new Date() });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Could not update order status in Firestore', err);
+  }
+};
+
+export const removeOrder = async (orderId: string) => {
+  // Update local immediately
+  const nextOrders = cachedOrders.filter(o => o.id !== orderId);
+  notifySubscribers(nextOrders);
+
+  // Attempt Firestore delete
+  try {
+    await deleteDoc(doc(db, 'orders', orderId));
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Could not delete order in Firestore', err);
+  }
+};

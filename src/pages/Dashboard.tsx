@@ -21,6 +21,7 @@ import {
 import { Product, Order, Activity, ProfileInfo } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRupees, formatRupeesCompact } from '../utils/currency';
+import { calculateRevenueTrends } from '../utils/revenueTrends';
 
 interface DashboardProps {
   products: Product[];
@@ -59,11 +60,17 @@ export default function Dashboard({
     .sort((a, b) => (b.rating || 0) - (a.rating || 0))
     .slice(0, 3);
 
-  // Derive metrics dynamically from state to show craftsmanship!
+  // Derive metrics dynamically from authoritative backend and state
   const totalProductsCount = products.length;
-  const lowStockCount = products.filter(p => p.stock < 30).length;
+  // Genuine low stock: products with inventory between 1 and 10 units (out of stock handled separately)
+  const lowStockCount = products.filter(p => p.stock > 0 && p.stock <= 10).length;
   const totalOrdersCount = orders.length;
-  const calculatedRevenue = orders.reduce((acc, o) => acc + (o.status !== 'Cancelled' ? o.amount : 0), 0);
+
+  // Calculate dynamic revenue trends matching the selected date range
+  const revenueTrends = calculateRevenueTrends(orders, selectedRange);
+  // Revenue metric agrees 100% with the Revenue Trends graph
+  const calculatedRevenue = revenueTrends.totalCurrentRevenue;
+
   const salesByProduct = orders.reduce<Record<string, number>>((sales, order) => {
     if (order.status !== 'Cancelled') {
       const key = order.productName.trim().toLowerCase();
@@ -71,22 +78,15 @@ export default function Dashboard({
     }
     return sales;
   }, {});
-  const bestSellingProducts = [...products]
+
+  const productsWithSales = products.filter(p => (salesByProduct[p.name.trim().toLowerCase()] || 0) > 0);
+  const bestSellingProducts = [...productsWithSales]
     .sort((a, b) => (salesByProduct[b.name.trim().toLowerCase()] || 0) - (salesByProduct[a.name.trim().toLowerCase()] || 0))
-    .slice(0, 2);
+    .slice(0, 4);
+
   const pendingShipments = orders
     .filter(order => order.status === 'Pending' || order.status === 'Shipped')
     .slice(0, 4);
-
-  // Revenue graph path info
-  const points1 = [
-    { x: 40, y: 220, label: 'Day 5', val1: '₹12k', val2: '₹8k' },
-    { x: 160, y: 190, label: 'Day 10', val1: '₹18k', val2: '₹11k' },
-    { x: 280, y: 210, label: 'Day 15', val1: '₹15k', val2: '₹13k' },
-    { x: 400, y: 130, label: 'Day 20', val1: '₹32k', val2: '₹17k' },
-    { x: 520, y: 170, label: 'Day 25', val1: '₹24k', val2: '₹21k' },
-    { x: 640, y: 70, label: 'Day 30', val1: '₹42k', val2: '₹24k' }
-  ];
 
   return (
     <div className="space-y-8 select-none font-sans mb-16">
@@ -315,7 +315,7 @@ export default function Dashboard({
           <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="font-display text-lg font-bold text-slate-800">Revenue Trends</h3>
-              <p className="text-xs font-medium text-slate-400">Growth comparison between core product categories</p>
+              <p className="text-xs font-medium text-slate-400">Growth comparison against previous equivalent period</p>
             </div>
             <select 
               value={selectedRange} 
@@ -324,7 +324,9 @@ export default function Dashboard({
             >
               <option>Last 7 Days</option>
               <option>Last 30 Days</option>
-              <option>This Quarter</option>
+              <option>Last 90 Days</option>
+              <option>This Month</option>
+              <option>This Year</option>
             </select>
           </div>
 
@@ -332,57 +334,72 @@ export default function Dashboard({
           <div className="flex-1 w-full relative group/chart mt-4">
             {/* Y axis lines */}
             <div className="absolute inset-x-0 inset-y-0 flex flex-col justify-between text-[10px] font-bold text-slate-300 pointer-events-none select-none z-0">
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹50k</span></div>
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹40k</span></div>
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹30k</span></div>
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹20k</span></div>
-              <div className="border-b border-dashed border-slate-200/70 w-full pb-1 flex justify-between"><span>₹10k</span></div>
-              <div className="flex justify-between"><span>0</span></div>
+              {revenueTrends.yAxisLabels.map((lbl, idx) => (
+                <div key={idx} className={`${idx < revenueTrends.yAxisLabels.length - 1 ? 'border-b border-dashed border-slate-200/70' : ''} w-full pb-1 flex justify-between`}>
+                  <span>{lbl}</span>
+                </div>
+              ))}
             </div>
+
+            {/* Empty state overlay when no revenue is recorded */}
+            {!revenueTrends.hasData && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center pointer-events-none pb-6">
+                <span className="text-xs font-bold text-slate-400">No earned revenue recorded for {selectedRange.toLowerCase()}</span>
+                <span className="text-[11px] text-slate-350 mt-1">Completed orders will automatically plot your live revenue trend here</span>
+              </div>
+            )}
 
             {/* SVGs rendering */}
             <svg className="absolute inset-0 w-full h-full overflow-visible z-10" viewBox="0 0 680 250" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="chartAreaGradient" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="#451ebb" stopOpacity="0.18" />
+                  <stop offset="0%" stopColor="#451ebb" stopOpacity={revenueTrends.hasData ? "0.18" : "0.03"} />
                   <stop offset="100%" stopColor="#451ebb" stopOpacity="0" />
                 </linearGradient>
               </defs>
 
               {/* Area path */}
-              <path 
-                d="M 40 220 Q 100 200 160 190 T 280 210 T 400 130 T 520 170 T 640 70 L 640 250 L 40 250 Z" 
-                fill="url(#chartAreaGradient)"
-                className="opacity-90"
-              />
+              {revenueTrends.areaPath && (
+                <path 
+                  d={revenueTrends.areaPath} 
+                  fill="url(#chartAreaGradient)"
+                  className="opacity-90"
+                />
+              )}
 
-              {/* Anti-Reflective series line */}
-              <motion.path 
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1.5, ease: 'easeInOut' }}
-                d="M 40 220 Q 100 200 160 190 T 280 210 T 400 130 T 520 170 T 640 70" 
-                fill="none" 
-                stroke="#451ebb" 
-                strokeWidth="4" 
-                strokeLinecap="round" 
-              />
+              {/* Current Period series line */}
+              {revenueTrends.primaryLinePath && (
+                <motion.path 
+                  key={`primary-${selectedRange}`}
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ duration: 1.2, ease: 'easeInOut' }}
+                  d={revenueTrends.primaryLinePath} 
+                  fill="none" 
+                  stroke="#451ebb" 
+                  strokeWidth="4" 
+                  strokeLinecap="round" 
+                />
+              )}
 
-              {/* Polarized Coating series line */}
-              <motion.path 
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1.8, ease: 'easeInOut', delay: 0.3 }}
-                d="M 40 240 Q 120 220 230 230 T 420 180 T 645 130" 
-                fill="none" 
-                stroke="#ab8ffe" 
-                strokeWidth="2" 
-                strokeDasharray="6 4" 
-                strokeLinecap="round" 
-              />
+              {/* Previous Period series line */}
+              {revenueTrends.comparisonLinePath && (
+                <motion.path 
+                  key={`comparison-${selectedRange}`}
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ duration: 1.5, ease: 'easeInOut', delay: 0.2 }}
+                  d={revenueTrends.comparisonLinePath} 
+                  fill="none" 
+                  stroke="#ab8ffe" 
+                  strokeWidth="2" 
+                  strokeDasharray="6 4" 
+                  strokeLinecap="round" 
+                />
+              )}
 
               {/* Hover nodes anchor buttons */}
-              {points1.map((p, idx) => (
+              {revenueTrends.points.map((p, idx) => (
                 <circle 
                   key={idx}
                   cx={p.x}
@@ -392,12 +409,11 @@ export default function Dashboard({
                   stroke="#451ebb"
                   strokeWidth="3"
                   className="cursor-pointer hover:r-8 transition-all hover:fill-primary"
-                  onMouseEnter={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
+                  onMouseEnter={() => {
                     setHoveredDataPoint({
                       x: p.x,
                       y: p.y - 45,
-                      label: p.label,
+                      label: p.dateLabel,
                       val1: p.val1,
                       val2: p.val2
                     });
@@ -410,17 +426,17 @@ export default function Dashboard({
             {/* Custom Tooltip on Hover */}
             {hoveredDataPoint && (
               <div 
-                style={{ left: `${hoveredDataPoint.x - 50}px`, top: `${hoveredDataPoint.y}px` }}
-                className="absolute z-20 bg-slate-900 text-white rounded-lg p-2 shadow-lg text-[10px] w-28 text-center border border-slate-700 pointer-events-none"
+                style={{ left: `${Math.min(540, Math.max(10, hoveredDataPoint.x - 65))}px`, top: `${Math.max(10, hoveredDataPoint.y)}px` }}
+                className="absolute z-20 bg-slate-900 text-white rounded-lg p-2.5 shadow-lg text-[11px] min-w-[130px] text-center border border-slate-700 pointer-events-none"
               >
-                <div className="font-bold border-b border-slate-700 pb-1 mb-1">{hoveredDataPoint.label}</div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Performance:</span>
+                <div className="font-bold border-b border-slate-700 pb-1 mb-1 text-[10px] text-slate-300">{hoveredDataPoint.label}</div>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-slate-400">Current:</span>
                   <span className="font-bold text-accent">{hoveredDataPoint.val1}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Mix:</span>
-                  <span className="font-bold text-secondary-fixed">{hoveredDataPoint.val2}</span>
+                <div className="flex justify-between items-center gap-2 mt-0.5">
+                  <span className="text-slate-400">Previous:</span>
+                  <span className="font-semibold text-secondary-fixed">{hoveredDataPoint.val2}</span>
                 </div>
               </div>
             )}
@@ -429,11 +445,11 @@ export default function Dashboard({
           <div className="flex justify-center gap-8 mt-4 border-t border-slate-100 pt-4 select-none">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
               <span className="w-3 h-3 rounded-full bg-primary inline-block"></span>
-              <span>Electronics Focus</span>
+              <span>Current Period</span>
             </div>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
               <span className="w-3.5 h-1.5 border border-dashed border-primary bg-secondary-container/40 rounded inline-block"></span>
-              <span>Apparel Momentum</span>
+              <span>Previous Period</span>
             </div>
           </div>
         </div>
@@ -537,11 +553,13 @@ export default function Dashboard({
                     </td>
                     <td className="py-4 text-right block md:table-cell">
                       <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${
-                        product.status === 'In Stock' 
-                          ? 'bg-emerald-50 text-emerald-600' 
-                          : 'bg-amber-50 text-amber-600'
+                        product.stock > 10
+                          ? 'bg-emerald-50 text-emerald-600'
+                          : product.stock > 0
+                            ? 'bg-amber-50 text-amber-600'
+                            : 'bg-rose-50 text-rose-500'
                       }`}>
-                        {product.status}
+                        {product.stock > 10 ? 'In Stock' : product.stock > 0 ? 'Low Stock' : 'Out of Stock'}
                       </span>
                     </td>
                   </tr>
@@ -550,7 +568,7 @@ export default function Dashboard({
                 {bestSellingProducts.length === 0 && (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-xs font-semibold text-slate-400">
-                      No products uploaded yet.
+                      No product sales recorded yet. Completed orders will appear here ranked by sales volume.
                     </td>
                   </tr>
                 )}

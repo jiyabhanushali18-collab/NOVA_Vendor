@@ -284,11 +284,11 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
         color: primaryColor,
         colors: variantColors.length ? variantColors : [primaryColor],
         description,
-        price: Number(price) || 120,
+        price: Number(price) || 0,
         originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
         discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
         stock: totalStock,
-        status: totalStock > 15 ? 'In Stock' as const : totalStock > 0 ? 'Low Stock' as const : 'Out of Stock' as const,
+        status: totalStock > 10 ? 'In Stock' as const : totalStock > 0 ? 'Low Stock' as const : 'Out of Stock' as const,
         mainImage: primaryImage,
         imageUrl: primaryImage,
         images: productImages.length ? productImages : [primaryImage],
@@ -338,7 +338,7 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="e.g. Aeon Crystal Clear"
+                placeholder="e.g. Classic Oversized Graphic Tee"
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200"
                 required
               />
@@ -346,10 +346,10 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
             <div className="flex flex-col gap-2">
               <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">BRAND</label>
               <input 
-                type="text"
+                type="text" 
                 value={brand}
                 onChange={e => setBrand(e.target.value)}
-                placeholder="e.g. Nova Supply"
+                placeholder="e.g. Fashion Fushion"
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200"
                 required
               />
@@ -363,28 +363,17 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
               >
                 <option>T-Shirts</option>
                 <option>Shirts</option>
-                <option>Polo Shirts</option>
+                <option>Polo T-Shirts</option>
+                <option>Tops</option>
                 <option>Hoodies</option>
                 <option>Sweatshirts</option>
                 <option>Jackets</option>
-                <option>Jeans</option>
-                <option>Trousers</option>
-                <option>Shorts</option>
-                <option>Dresses</option>
-                <option>Kurtis</option>
-                <option>Sarees</option>
-                <option>Co-ord Sets</option>
-                <option>Crop Tops</option>
-                <option>Skirts</option>
-                <option>Blazers</option>
                 <option>Ethnic Wear</option>
+                <option>Bottomwear</option>
+                <option>Cargo Pants</option>
+                <option>Dresses</option>
+                <option>Sets</option>
                 <option>Footwear</option>
-                <option>Bags</option>
-                <option>Watches</option>
-                <option>Sunglasses</option>
-                <option>Caps</option>
-                <option>Belts</option>
-                <option>Jewellery</option>
                 <option>Accessories</option>
               </select>
             </div>

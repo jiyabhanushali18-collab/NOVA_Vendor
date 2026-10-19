@@ -106,14 +106,20 @@ const readString = (...values: unknown[]) => {
   return '';
 };
 
-const readNumber = (value: unknown) => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Number(value.replace(/[^0-9.-]/g, ''));
-    return Number.isFinite(parsed) ? parsed : 0;
+const readNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value.replace(/[^0-9.-]/g, ''));
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
   }
 
   return 0;
@@ -230,27 +236,180 @@ const readVariants = (value: unknown): ProductVariantDocument[] | undefined => {
   return variants.length ? variants : undefined;
 };
 
+const collectAllImages = (data: Record<string, unknown>): string[] => {
+  const images: string[] = [];
+
+  // Check array fields
+  const arrayCandidates = [data.images, data.imageUrls, data.photos, data.media];
+  for (const candidate of arrayCandidates) {
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        if (typeof item === 'string' && item.trim()) {
+          images.push(item.trim());
+        }
+      }
+    }
+  }
+
+  // Check specific common single image fields
+  const singleCandidates = [
+    data.imageUrl,
+    data.mainImage,
+    data.image,
+    data.image2,
+    data.imageUrl2,
+    data.imageurl,
+    data.imageurl1,
+    data.imageurl2,
+    data.photoUrl,
+    data.thumbnailUrl
+  ];
+  for (const candidate of singleCandidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      images.push(candidate.trim());
+    }
+  }
+
+  // Scan any color-named or extra image keys (e.g. blackImage, whiteImage, darkgreenimage, etc.)
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'string' && value.trim()) {
+      const lowerKey = key.toLowerCase();
+      if ((lowerKey.includes('image') || lowerKey.includes('photo') || lowerKey.includes('pic')) &&
+          (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:image/'))) {
+        images.push(value.trim());
+      }
+    }
+  }
+
+  return Array.from(new Set(images));
+};
+
+const normalizeCategory = (categoryRaw: string): string => {
+  if (!categoryRaw || !categoryRaw.trim()) return 'Apparel';
+  const trimmed = categoryRaw.trim().replace(/_/g, ' ');
+  // Normalize known casing
+  const lower = trimmed.toLowerCase();
+  if (lower === 'cargo pants' || lower === 'cargo_pants') return 'Cargo Pants';
+  if (lower === 't-shirts' || lower === 'tshirts' || lower === 'tshirt') return 'T-Shirts';
+  if (lower === 'polo t-shirts' || lower === 'polo tshirts') return 'Polo T-Shirts';
+  if (lower === 'sweatshirts' || lower === 'sweatshirt') return 'Sweatshirts';
+  if (lower === 'hoodies' || lower === 'hoodie') return 'Hoodies';
+  if (lower === 'jackets' || lower === 'jacket') return 'Jackets';
+  if (lower === 'tops' || lower === 'top') return 'Tops';
+  if (lower === 'bottomwear' || lower === 'bottom wear') return 'Bottomwear';
+  if (lower === 'ethnic wear' || lower === 'ethnicwear') return 'Ethnic Wear';
+  if (lower === 'footwear' || lower === 'shoes') return 'Footwear';
+  if (lower === 'shirts' || lower === 'shirt') return 'Shirts';
+  if (lower === 'dresses' || lower === 'dress') return 'Dresses';
+  if (lower === 'sets' || lower === 'co-ord set') return 'Sets';
+  if (lower === 'accessories' || lower === 'accessory') return 'Accessories';
+
+  // Capitalize words
+  return trimmed.replace(/\b\w/g, char => char.toUpperCase());
+};
+
 const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): ProductDocument => {
   const data = snapshot.data();
 
+  // Name resolution
+  const name = readString(
+    data.name,
+    data.Name,
+    data.namde,
+    data.productName,
+    data.productTitle,
+    data.title,
+    data.itemName
+  ) || snapshot.id.replace(/[-_]+/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+  // Category resolution
+  const categoryRaw = readString(data.category, data.Category, data.productCategory, data.type, data.itemCategory);
+  const category = normalizeCategory(categoryRaw);
+
+  // Price resolution
+  const rawPrice = readNumber(
+    data.price,
+    data.Price,
+    data['Price'],
+    data.discountedPrice,
+    data.DiscountedPrice,
+    data.originalPrice,
+    data.OriginalPrice,
+    data['Original Price'],
+    data.originalprice
+  );
+
+  const originalPriceRaw = data.originalPrice ?? data.OriginalPrice ?? data['Original Price'] ?? data.originalprice;
+  const originalPrice = originalPriceRaw !== undefined ? readNumber(originalPriceRaw) : undefined;
+  const discountedPriceRaw = data.discountedPrice ?? data.DiscountedPrice ?? data.salePrice;
+  const discountedPrice = discountedPriceRaw !== undefined ? readNumber(discountedPriceRaw) : undefined;
+
+  // Stock resolution (handle stockQuantity, stock, inventory, quantity)
+  const stock = readNumber(
+    data.stock,
+    data.stockQuantity,
+    data.StockQuantity,
+    data.inventory,
+    data.availableStock,
+    data.quantity,
+    data.qty
+  );
+
+  // Images collection
+  const allImages = collectAllImages(data);
+  const mainImage = readString(
+    data.mainImage,
+    data.imageUrl,
+    data.imageurl,
+    data.imageurl1,
+    data.image,
+    allImages[0]
+  );
+  const imageUrl = mainImage || allImages[0] || '';
+
+  // Sizes & Colors
+  const sizes = readSizes(data.sizes || data.Sizes || data.availableSizes || data.size);
+  const colors = readStrings(data.colors || data.Colors || data.Collors || data.color || data.Color || data.colour);
+  const primaryColor = colors[0] || readString(data.color, data.Color, data.colour) || 'Default';
+
+  // Vendor resolution
+  const vendorId = readString(data.vendorId, data['vendorId '], data.ownerUid, data.vendor?.id) || 'VEN001';
+  const vendorName = readString(data.vendorName, data.companyName, data.storeName, data.brand, data.Brand, data.vendor?.name) || 'Fashion Fushion';
+
+  // Variants resolution
+  let variants = readVariants(data.variants);
+  if (!variants && colors.length > 0) {
+    variants = colors.map(col => {
+      // Find matching color images if any
+      const colorLower = col.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const colorImages = allImages.filter(imgUrl => imgUrl.toLowerCase().includes(colorLower));
+      return {
+        color: col,
+        sizes: sizes.length ? sizes : undefined,
+        images: colorImages.length ? colorImages : allImages.slice(0, 2),
+        stock: stock ? Math.floor(stock / colors.length) : 0
+      };
+    });
+  }
+
   return {
     id: snapshot.id,
-    name: readString(data.name, data.productName, data.title),
-    brand: readString(data.brand, data.companyName, data.vendorName),
-    category: readString(data.category, data.productCategory, data.type),
-    price: readNumber(data.price),
-    originalPrice: data.originalPrice === undefined ? undefined : readNumber(data.originalPrice),
-    discountedPrice: data.discountedPrice === undefined ? undefined : readNumber(data.discountedPrice),
-    mainImage: readString(data.mainImage, data.imageUrl, data.image, data.photoUrl, data.thumbnailUrl),
-    imageUrl: readString(data.imageUrl, data.mainImage, data.image, data.photoUrl, data.thumbnailUrl),
-    images: readImages(data.images, data.imageUrls, data.photos),
-    sizes: readSizes(data.sizes),
-    vendorId: readString(data.vendorId),
-    vendorName: readString(data.vendorName),
-    stock: readNumber(data.stock),
-    color: readString(data.color, data.colour),
-    colors: readStrings(data.colors),
-    description: readString(data.description, data.details),
+    name,
+    brand: readString(data.brand, data.Brand, vendorName) || vendorName,
+    category,
+    price: rawPrice,
+    originalPrice,
+    discountedPrice,
+    mainImage,
+    imageUrl,
+    images: allImages.length ? allImages : (imageUrl ? [imageUrl] : []),
+    sizes,
+    vendorId,
+    vendorName,
+    stock,
+    color: primaryColor,
+    colors: colors.length ? colors : [primaryColor],
+    description: readString(data.description, data.details, data.desc),
     fabric: readString(data.fabric) || undefined,
     fit: readString(data.fit) || undefined,
     gender: readString(data.gender) || undefined,
@@ -264,9 +423,9 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
     tags: readStrings(data.tags),
     frameShape: readString(data.frameShape) || undefined,
     material: readString(data.material) || undefined,
-    sku: readString(data.sku, data.productId),
-    variants: readVariants(data.variants),
-    status: readString(data.status) || undefined,
+    sku: readString(data.sku, data.productId, snapshot.id),
+    variants,
+    status: readString(data.status) || (stock > 0 ? 'active' : 'active'),
     createdAt: data.createdAt,
     updatedAt: data.updatedAt
   };

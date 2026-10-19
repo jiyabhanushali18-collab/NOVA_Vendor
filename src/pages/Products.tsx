@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Package, 
   Search, 
@@ -24,28 +24,57 @@ interface ProductsProps {
   onDeleteProduct?: (productId: string) => Promise<void>;
 }
 
+const ALL_CLOTHING_CATEGORIES = [
+  'T-Shirts',
+  'Shirts',
+  'Polo T-Shirts',
+  'Tops',
+  'Hoodies',
+  'Sweatshirts',
+  'Jackets',
+  'Ethnic Wear',
+  'Bottomwear',
+  'Cargo Pants',
+  'Dresses',
+  'Sets',
+  'Footwear',
+  'Accessories'
+];
+
 export default function Products({ products, profileInfo, isLoading = false, setProducts, setActiveTab, onEditProduct, onDeleteProduct }: ProductsProps) {
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [selectedStatus, setSelectedStatus] = useState('Status: All');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 4;
+  const itemsPerPage = 8;
+
+  // Dynamically compile categories present in products plus standard clothing categories
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>(ALL_CLOTHING_CATEGORIES);
+    products.forEach(p => {
+      if (p.category && p.category.trim() && p.category !== 'Uncategorized') {
+        set.add(p.category.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [products]);
 
   // Filter items reactively
   const filteredProducts = products.filter(product => {
-    // Category check
+    // Category check with case/spacing normalization
+    const normalize = (cat: string) => (cat || '').toLowerCase().replace(/[\s_-]+/g, '');
     const matchesCategory = 
       selectedCategory === 'All Categories' || 
-      product.category.toLowerCase() === selectedCategory.toLowerCase();
+      normalize(product.category) === normalize(selectedCategory);
 
-    // Status check
+    // Status check with exact stock thresholds
     let matchesStatus = true;
     if (selectedStatus === 'In Stock') {
-      matchesStatus = product.status === 'In Stock';
+      matchesStatus = product.stock > 10;
     } else if (selectedStatus === 'Low Stock') {
-      matchesStatus = product.status === 'Low Stock';
+      matchesStatus = product.stock > 0 && product.stock <= 10;
     } else if (selectedStatus === 'Out of Stock') {
-      matchesStatus = product.status === 'Out of Stock';
+      matchesStatus = product.stock === 0;
     }
 
     // Search check
@@ -53,6 +82,7 @@ export default function Products({ products, profileInfo, isLoading = false, set
     const matchesSearch = 
       product.name.toLowerCase().includes(lowerSearch) ||
       product.brand.toLowerCase().includes(lowerSearch) ||
+      product.category.toLowerCase().includes(lowerSearch) ||
       product.sku?.toLowerCase().includes(lowerSearch);
 
     // Vendor store check
@@ -102,11 +132,9 @@ export default function Products({ products, profileInfo, isLoading = false, set
               className="bg-transparent border-none text-xs font-bold text-slate-600 focus:outline-none focus:ring-0 cursor-pointer"
             >
               <option>All Categories</option>
-              <option value="General">General</option>
-              <option value="Electronics">Electronics</option>
-              <option value="Accessories">Accessories</option>
-              <option value="Apparel">Apparel</option>
-              <option value="Sport">Sport</option>
+              {categoryOptions.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
           </div>
 
@@ -225,12 +253,14 @@ export default function Products({ products, profileInfo, isLoading = false, set
 
                       {/* Status Badging */}
                       <td className="p-5">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
-                          product.status === 'In Stock' 
-                            ? 'bg-emerald-50 text-emerald-600' 
-                            : 'bg-rose-50 text-rose-500'
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${
+                          product.stock > 10
+                            ? 'bg-emerald-50 text-emerald-600 border-emerald-200/50' 
+                            : product.stock > 0
+                            ? 'bg-amber-50 text-amber-600 border-amber-200/50'
+                            : 'bg-rose-50 text-rose-500 border-rose-200/50'
                         }`}>
-                          {product.status}
+                          {product.stock > 10 ? 'In Stock' : product.stock > 0 ? 'Low Stock' : 'Out of Stock'}
                         </span>
                       </td>
 

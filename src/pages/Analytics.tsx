@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -24,31 +24,123 @@ export default function Analytics({ orders, products }: AnalyticsProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
-  const activeOrders = orders.filter(order => order.status !== 'Cancelled');
-  const totalRevenue = activeOrders.reduce((sum, order) => sum + order.amount, 0);
-  const averageOrderValue = activeOrders.length ? totalRevenue / activeOrders.length : 0;
-  const salesByProduct = activeOrders.reduce<Record<string, number>>((sales, order) => {
-    const key = order.productName.trim().toLowerCase();
-    sales[key] = (sales[key] || 0) + order.quantity;
-    return sales;
-  }, {});
-  const bestSellingProducts = [...products]
-    .sort((a, b) => (salesByProduct[b.name.trim().toLowerCase()] || 0) - (salesByProduct[a.name.trim().toLowerCase()] || 0))
-    .slice(0, 5);
-  const categoryCount = products.reduce<Record<string, number>>((counts, product) => {
-    counts[product.category || 'Uncategorized'] = (counts[product.category || 'Uncategorized'] || 0) + 1;
-    return counts;
-  }, {});
-  const topCategories = Object.entries(categoryCount).sort(([, a], [, b]) => b - a).slice(0, 3);
-  const maxCategoryCount = topCategories[0]?.[1] || 1;
-  const barData = topCategories.length
-    ? topCategories.map(([label, count]) => ({
-      label: label.slice(0, 8).toUpperCase(),
-      height: `${Math.max(12, (count / maxCategoryCount) * 95)}%`,
-      value: `${count} product${count === 1 ? '' : 's'}`,
+  // Consistent earned revenue definition: Delivered or Shipped orders
+  const earnedOrders = useMemo(() => {
+    return orders.filter(order => order.status === 'Delivered' || order.status === 'Shipped');
+  }, [orders]);
+
+  const activeOrders = useMemo(() => {
+    return orders.filter(order => order.status !== 'Cancelled');
+  }, [orders]);
+
+  const totalRevenue = useMemo(() => {
+    return earnedOrders.reduce((sum, order) => sum + order.amount, 0);
+  }, [earnedOrders]);
+
+  const averageOrderValue = useMemo(() => {
+    return earnedOrders.length ? totalRevenue / earnedOrders.length : 0;
+  }, [earnedOrders, totalRevenue]);
+
+  const salesByProduct = useMemo(() => {
+    return earnedOrders.reduce<Record<string, number>>((sales, order) => {
+      const key = order.productName.trim().toLowerCase();
+      sales[key] = (sales[key] || 0) + order.quantity;
+      return sales;
+    }, {});
+  }, [earnedOrders]);
+
+  const bestSellingProducts = useMemo(() => {
+    return [...products]
+      .sort((a, b) => (salesByProduct[b.name.trim().toLowerCase()] || 0) - (salesByProduct[a.name.trim().toLowerCase()] || 0))
+      .slice(0, 5);
+  }, [products, salesByProduct]);
+
+  // Last 6 months sales volume bars
+  const barData = useMemo(() => {
+    const now = new Date();
+    const months: { label: string; amount: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+      const yr = d.getFullYear();
+      const mo = d.getMonth();
+
+      const matched = earnedOrders.filter(o => {
+        const od = new Date(o.date);
+        return !isNaN(od.getTime()) && od.getFullYear() === yr && od.getMonth() === mo;
+      });
+
+      const amount = matched.reduce((sum, o) => sum + o.amount, 0);
+      months.push({ label, amount });
+    }
+
+    const maxAmount = Math.max(...months.map(m => m.amount), 0);
+    return months.map(m => ({
+      label: m.label,
+      height: maxAmount > 0 ? `${Math.max(12, (m.amount / maxAmount) * 92)}%` : '8%',
+      value: m.amount > 0 ? formatRupeesCompact(m.amount) : `${m.label}: ₹0`,
       color: '#ab8ffe'
-    }))
-    : [{ label: 'NO DATA', height: '12%', value: 'No products yet', color: '#ab8ffe' }];
+    }));
+  }, [earnedOrders]);
+
+  // Dynamic Clothing Category Market Share
+  const donutData = useMemo(() => {
+    const categoryCount: Record<string, number> = {};
+    products.forEach(p => {
+      const cat = p.category && p.category.trim() && p.category !== 'Uncategorized' ? p.category.trim() : 'Apparel';
+      categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+    });
+
+    const entries = Object.entries(categoryCount).sort(([, a], [, b]) => b - a);
+    const total = products.length || 1;
+    const top3 = entries.slice(0, 3);
+    const top3Sum = top3.reduce((sum, [, count]) => sum + count, 0);
+    const othersCount = total - top3Sum;
+
+    const colors = ['#451ebb', '#ab8ffe', '#f9bd22', '#64748b'];
+    let runningOffset = 0;
+    
+    const items = top3.map(([name, count], idx) => {
+      const percentage = Math.max(1, Math.round((count / total) * 100));
+      const item = {
+        name,
+        count,
+        percentage,
+        color: colors[idx % colors.length],
+        strokeDasharray: `${percentage} ${100 - percentage}`,
+        strokeDashoffset: -runningOffset
+      };
+      runningOffset += percentage;
+      return item;
+    });
+
+    if (othersCount > 0 && top3.length > 0) {
+      const percentage = Math.max(0, 100 - items.reduce((sum, i) => sum + i.percentage, 0));
+      if (percentage > 0) {
+        items.push({
+          name: 'Other Clothing',
+          count: othersCount,
+          percentage,
+          color: colors[3],
+          strokeDasharray: `${percentage} ${100 - percentage}`,
+          strokeDashoffset: -runningOffset
+        });
+      }
+    }
+
+    if (items.length === 0) {
+      return [{
+        name: 'Apparel',
+        count: 0,
+        percentage: 100,
+        color: '#ab8ffe',
+        strokeDasharray: '100 0',
+        strokeDashoffset: 0
+      }];
+    }
+
+    return items;
+  }, [products]);
 
   const handleExport = () => {
     setIsExporting(true);
@@ -201,86 +293,52 @@ export default function Analytics({ orders, products }: AnalyticsProps) {
           <h3 className="font-display text-[15px] font-bold text-slate-800 mb-4">Market Share</h3>
           
           <div className="relative w-44 h-44 mx-auto my-auto flex items-center justify-center">
-            {/* Pure CSS SVG Donut */}
+            {/* Dynamic SVG Donut */}
             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-              {/* Accessory segment - 30% */}
-              <circle 
-                cx="18" 
-                cy="18" 
-                r="15.915" 
-                fill="transparent" 
-                stroke="#f9bd22" 
-                strokeWidth="5" 
-                strokeDasharray="30 100" 
-                strokeDashoffset="0"
-                className="transition-all duration-300 hover:stroke-[6] cursor-pointer"
-                onMouseEnter={() => setActiveCategory('Accessories')}
-                onMouseLeave={() => setActiveCategory(null)}
-              />
-              {/* Electronics segment - 45% */}
-              <circle 
-                cx="18" 
-                cy="18" 
-                r="15.915" 
-                fill="transparent" 
-                stroke="#451ebb" 
-                strokeWidth="5" 
-                strokeDasharray="45 100" 
-                strokeDashoffset="-30"
-                className="transition-all duration-300 hover:stroke-[6] cursor-pointer"
-                onMouseEnter={() => setActiveCategory('Electronics')}
-                onMouseLeave={() => setActiveCategory(null)}
-              />
-              {/* Apparel segment - 25% */}
-              <circle 
-                cx="18" 
-                cy="18" 
-                r="15.915" 
-                fill="transparent" 
-                stroke="#ab8ffe" 
-                strokeWidth="5" 
-                strokeDasharray="25 100" 
-                strokeDashoffset="-75"
-                className="transition-all duration-300 hover:stroke-[6] cursor-pointer"
-                onMouseEnter={() => setActiveCategory('Apparel')}
-                onMouseLeave={() => setActiveCategory(null)}
-              />
+              {donutData.map(item => (
+                <circle 
+                  key={item.name}
+                  cx="18" 
+                  cy="18" 
+                  r="15.915" 
+                  fill="transparent" 
+                  stroke={item.color} 
+                  strokeWidth="5" 
+                  strokeDasharray={item.strokeDasharray} 
+                  strokeDashoffset={item.strokeDashoffset}
+                  className="transition-all duration-300 hover:stroke-[6] cursor-pointer"
+                  onMouseEnter={() => setActiveCategory(item.name)}
+                  onMouseLeave={() => setActiveCategory(null)}
+                />
+              ))}
             </svg>
             <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none select-none">
               <span className="font-display text-2xl font-black text-slate-800">
-                {activeCategory === 'Electronics' && '45%'}
-                {activeCategory === 'Apparel' && '25%'}
-                {activeCategory === 'Accessories' && '30%'}
-                {!activeCategory && '100%'}
+                {activeCategory 
+                  ? `${donutData.find(d => d.name === activeCategory)?.percentage ?? 0}%` 
+                  : `${donutData[0]?.percentage ?? 100}%`}
               </span>
-              <span className="font-display text-[9px] uppercase tracking-wider font-extrabold text-slate-400 mt-0.5">
-                {activeCategory || 'Total'}
+              <span className="font-display text-[9px] uppercase tracking-wider font-extrabold text-slate-400 mt-0.5 max-w-[100px] text-center truncate">
+                {activeCategory || donutData[0]?.name || 'Total'}
               </span>
             </div>
           </div>
 
           <div className="space-y-2 mt-2 select-none border-t border-slate-100 pt-3">
-            <div className={`flex items-center justify-between p-1 rounded transition-all ${activeCategory === 'Electronics' ? 'bg-slate-100' : ''}`}>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
-                <span className="text-xs font-semibold text-slate-500">Electronics</span>
+            {donutData.map(item => (
+              <div 
+                key={item.name}
+                onMouseEnter={() => setActiveCategory(item.name)}
+                onMouseLeave={() => setActiveCategory(null)}
+                className={`flex items-center justify-between p-1 rounded transition-all cursor-pointer ${activeCategory === item.name ? 'bg-slate-100' : ''}`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
+                  <span className="text-xs font-semibold text-slate-500 truncate">{item.name}</span>
+                </div>
+                <span className="font-semibold text-xs text-slate-700 ml-2 shrink-0">{item.percentage}%</span>
               </div>
-              <span className="font-semibold text-xs text-slate-700">45%</span>
-            </div>
-            <div className={`flex items-center justify-between p-1 rounded transition-all ${activeCategory === 'Apparel' ? 'bg-slate-100' : ''}`}>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#ab8ffe]"></span>
-                <span className="text-xs font-semibold text-slate-500">Apparel</span>
-              </div>
-              <span className="font-semibold text-xs text-slate-700">25%</span>
-            </div>
-            <div className={`flex items-center justify-between p-1 rounded transition-all ${activeCategory === 'Accessories' ? 'bg-slate-100' : ''}`}>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-tertiary-fixed-dim"></span>
-                <span className="text-xs font-semibold text-slate-500">Accessories</span>
-              </div>
-              <span className="font-semibold text-xs text-slate-700">30%</span>
-            </div>
+            ))}
           </div>
         </div>
       </div>

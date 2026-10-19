@@ -1,6 +1,6 @@
 {
   "name": "NOVA Vendor Portal",
-  "description": "Next Gen Optical Vision Assistant Vendor Portal for eyewear manufacturers to manage inventory, products, orders, detailed analytics, and vendor profiles.",
+  "description": "B2B Wholesale Marketplace & Multi-tenant Dropshipping Vendor Portal for clothing manufacturers and apparel brands to manage inventory, products, orders, and real-time revenue analytics.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -190,12 +190,14 @@ export const initialActivities: Activity[] = [
 ];
 
 export const initialProfile: ProfileInfo = {
-  storeName: 'NOVA Supply Global',
-  ownerName: 'Alexander Vance',
-  gstNumber: 'GSTIN29ABCDE1234F1Z5',
-  contactDetails: '+1 (555) 012-3456',
-  businessAddress: '724 Commerce Plaza, Suite 900, Silicon Forest, Oregon, 97005, USA',
-  logoUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBm7eQXshyPhi-B1Ro7Zq36moMoPn2a4rmSYwA2w1fKa1nqsP0MRghkW4gcGRGt9GKK8IR9hwCFhp8Q96E_OPYKUhsL-j29Fx81vCKhCF_TrFbhKRBG-iIUGKFerL3bMSASFCzgEJesWMh817QYGDnJgxdYrUHjQScSD20Nwe7A00OkkFtU2PAcjrQP2LD6PO9HgBC3AbJ6ACbp2JSx8mXJrxDbm-8QFlj4O0WTPWtcdCWLaj_ST4jLO70cXxu_sgDTqsX1YxRh2hg',
+  storeName: 'Fashion Fushion',
+  companyName: 'Fashion Fushion',
+  vendorId: 'VEN001',
+  ownerName: 'Rahul Shah',
+  gstNumber: '27ABCDE1234F1Z5',
+  contactDetails: '+91 9876543210',
+  businessAddress: 'Mumbai, Maharashtra, India',
+  logoUrl: 'https://ui-avatars.com/api/?name=Fashion+Fushion&background=451ebb&color=fff&bold=true',
   status: 'VERIFIED',
-  memberSince: 'Jan 2024'
+  memberSince: 'Jun 2026'
 };

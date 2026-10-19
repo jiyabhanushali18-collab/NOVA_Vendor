@@ -216,7 +216,7 @@ const productDocumentToProduct = (product: ProductDocument): Product => {
     mainImage: product.mainImage || product.imageUrl || images[0] || fallbackImage,
     imageUrl: product.imageUrl || product.mainImage || images[0] || fallbackImage,
     images: images.length ? images : [fallbackImage],
-    status: stock > 0 ? (stock < 5 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
+    status: stock > 0 ? (stock <= 10 ? 'Low Stock' : 'In Stock') : 'Out of Stock',
     fabric: product.fabric,
     fit: product.fit,
     gender: product.gender,
@@ -311,6 +311,17 @@ export default function App() {
     }
 
     if (currentVendorName && product.vendorName?.trim().toLowerCase() === currentVendorName) {
+      return true;
+    }
+
+    // Support VEN001 partner store aliases (Fashion Fushion / Trendy Threads)
+    if (currentVendorId === 'VEN001' || currentVendorName.includes('fashion') || currentVendorName.includes('trendy')) {
+      return product.vendorId === 'VEN001' ||
+             product.vendorName?.toLowerCase() === 'fashion fushion' ||
+             product.vendorName?.toLowerCase() === 'trendy threads';
+    }
+
+    if (!currentVendorId && !currentVendorName) {
       return true;
     }
 
@@ -590,28 +601,34 @@ export default function App() {
   };
 
   const handleCreateOrder = async (newOrder: Order) => {
-    const vendorId = profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO';
-    const vendorName = profileInfo.companyName || profileInfo.storeName;
+    const vendorId = profileInfo.vendorId || auth.currentUser?.uid || 'VEN001';
+    const vendorName = profileInfo.companyName || profileInfo.storeName || 'Fashion Fushion';
     const orderData = removeUndefinedFields({
       ...newOrder,
-      id: undefined,
       vendorId,
       vendorName,
       createdAt: new Date(),
       updatedAt: new Date()
     });
-    const { addDoc, collection } = await import('firebase/firestore');
-    await addDoc(collection(db, 'orders'), orderData);
+
+    const { saveOrderRecord } = await import('./services/OrderService');
+    await saveOrderRecord(orderData);
 
     const purchasedProduct = products.find(product => product.name.trim().toLowerCase() === newOrder.productName.trim().toLowerCase());
     if (purchasedProduct) {
-      const { doc, updateDoc } = await import('firebase/firestore');
-      const nextStock = Math.max(0, purchasedProduct.stock - newOrder.quantity);
-      await updateDoc(doc(db, 'products', purchasedProduct.id), {
-        stock: nextStock,
-        status: nextStock > 15 ? 'active' : nextStock > 0 ? 'active' : 'out-of-stock',
-        updatedAt: new Date()
-      });
+      try {
+        const { doc, updateDoc } = await import('firebase/firestore');
+        const nextStock = Math.max(0, purchasedProduct.stock - newOrder.quantity);
+        await updateDoc(doc(db, 'products', purchasedProduct.id), {
+          stock: nextStock,
+          stockQuantity: nextStock,
+          status: nextStock > 0 ? 'active' : 'active',
+          updatedAt: new Date()
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('Could not update product stock in Firestore', err);
+      }
     }
   };
 
