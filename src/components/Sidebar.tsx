@@ -4,6 +4,7 @@ import {
   PlusCircle, 
   ShoppingCart, 
   BarChart3, 
+  Sparkles,
   UserCircle, 
   Settings,
   Boxes
@@ -25,6 +26,7 @@ export default function Sidebar({ activeTab, setActiveTab, isLoggedIn, onLogout 
     { id: 'addProduct', label: 'Add Product', icon: PlusCircle },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'marketInsights', label: 'Market Insights', icon: Sparkles },
     { id: 'profile', label: 'Profile', icon: UserCircle },
   ];
 

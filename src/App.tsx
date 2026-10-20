@@ -12,10 +12,12 @@ import Products from './pages/Products';
 import AddProduct from './pages/AddProduct';
 import Orders from './pages/Orders';
 import Analytics from './pages/Analytics';
+import MarketInsights from './pages/MarketInsights';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import { subscribeToProducts, type ProductDocument } from './services/ProductService';
 import { removeOrder, subscribeToOrders, updateOrderStatus } from './services/OrderService';
+import { trackPurchaseCompleted } from './services/AnalyticsEventService';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -616,6 +618,15 @@ export default function App() {
 
     const purchasedProduct = products.find(product => product.name.trim().toLowerCase() === newOrder.productName.trim().toLowerCase());
     if (purchasedProduct) {
+      trackPurchaseCompleted(
+        newOrder.id,
+        purchasedProduct.id,
+        purchasedProduct.name,
+        purchasedProduct.category,
+        newOrder.amount,
+        vendorId
+      );
+
       try {
         const { doc, updateDoc } = await import('firebase/firestore');
         const nextStock = Math.max(0, purchasedProduct.stock - newOrder.quantity);
@@ -701,6 +712,7 @@ export default function App() {
             { id: 'addProduct', label: 'Add Product' },
             { id: 'orders', label: 'Orders' },
             { id: 'analytics', label: 'Analytics' },
+            { id: 'marketInsights', label: 'Market Insights' },
             { id: 'profile', label: 'Profile' },
             { id: 'settings', label: 'Settings' }
           ].map((item) => (
@@ -790,6 +802,15 @@ export default function App() {
 
           {activeTab === 'analytics' && (
             <Analytics orders={orders} products={products} />
+          )}
+
+          {activeTab === 'marketInsights' && (
+            <MarketInsights 
+              orders={orders}
+              products={products}
+              profileInfo={profileInfo}
+              setActiveTab={handleTabChange}
+            />
           )}
 
           {activeTab === 'profile' && (

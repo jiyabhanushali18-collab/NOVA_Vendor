@@ -1,4 +1,4 @@
-import { LayoutDashboard, Package, ShoppingCart, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, Sparkles, UserCircle } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: string;
@@ -12,6 +12,7 @@ export default function BottomNav({ activeTab, setActiveTab, isLoggedIn }: Botto
   const tabs = [
     { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
+    { id: 'marketInsights', label: 'Insights', icon: Sparkles },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'profile', label: 'Profile', icon: UserCircle },
   ];

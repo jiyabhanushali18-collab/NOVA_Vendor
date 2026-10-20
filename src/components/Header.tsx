@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { Menu, Search, Bell, User } from 'lucide-react';
 import { ProfileInfo } from '../types';
 
@@ -18,6 +19,8 @@ export default function Header({
 }: HeaderProps) {
   if (!isLoggedIn) return null;
 
+  const [headerSearch, setHeaderSearch] = React.useState('');
+
   const avatarFallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(profileInfo.companyName || profileInfo.storeName || profileInfo.ownerName)}&background=451ebb&color=fff&bold=true`;
 
   const getPageTitle = () => {
@@ -27,9 +30,18 @@ export default function Header({
       case 'addProduct': return 'Add Product';
       case 'orders': return 'Orders';
       case 'analytics': return 'Analytics';
+      case 'marketInsights': return 'AI Market Insights';
       case 'profile': return 'Profile';
       case 'settings': return 'Settings';
       default: return 'NOVA Showroom';
+    }
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && headerSearch.trim()) {
+      import('../services/AnalyticsEventService').then(({ trackProductSearch }) => {
+        trackProductSearch(headerSearch.trim(), 5, 'Apparel', profileInfo.vendorId);
+      });
     }
   };
 
@@ -52,6 +64,9 @@ export default function Header({
         <div className="hidden sm:flex items-center bg-white/40 border border-slate-200/40 rounded-full px-4 py-1.5 focus-within:ring-2 focus-within:ring-primary/40 focus-within:border-primary transition-shadow">
           <Search className="text-slate-400 w-4 h-4 mr-2" />
           <input 
+            value={headerSearch}
+            onChange={(e) => setHeaderSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             className="bg-transparent border-none focus:outline-none text-sm w-44 lg:w-64 placeholder-slate-400 text-slate-700" 
             placeholder="Search products, vendors..." 
             type="text"

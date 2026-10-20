@@ -147,6 +147,19 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Google Gemini AI Configuration */}
+      <div className="bg-white/60 backdrop-blur-md rounded-2xl p-6 border border-slate-200/50 space-y-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+          <Sparkles className="w-5 h-5 text-primary" />
+          <div>
+            <h3 className="font-display font-bold text-slate-805 text-sm">Google Gemini AI Engine</h3>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">Powers live market insights, commercial predictions, and store demand recommendations</p>
+          </div>
+        </div>
+
+        <GeminiSettingsCard />
+      </div>
+
       {/* Theme Preference Note - Exquisite Slate defaults */}
       <div className="bg-white/65 hover:bg-white border border-slate-250 p-6 rounded-2xl flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -154,7 +167,7 @@ export default function Settings() {
           <div>
             <h4 className="font-display text-sm font-bold text-slate-800">Slate Calibration Theme</h4>
             <p className="text-[11px] text-slate-450 leading-relaxed font-medium mt-0.5">
-              NOVA uses the highly-contrastive Slate Theme specifically designed to neutralize strain under standard fluorescent clinic screens.
+              NOVA uses the highly-contrastive Slate Theme specifically designed to neutralize strain under standard fluorescent screens.
             </p>
           </div>
         </div>
@@ -163,6 +176,56 @@ export default function Settings() {
         </span>
       </div>
 
+    </div>
+  );
+}
+
+function GeminiSettingsCard() {
+  const [apiKeyInput, setApiKeyInput] = React.useState(() => {
+    try {
+      return localStorage.getItem('nova_gemini_api_key') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [saved, setSaved] = React.useState(false);
+
+  const handleSave = () => {
+    try {
+      if (apiKeyInput.trim()) {
+        localStorage.setItem('nova_gemini_api_key', apiKeyInput.trim());
+      } else {
+        localStorage.removeItem('nova_gemini_api_key');
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {}
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="block text-[10px] font-bold text-slate-400 font-display tracking-wider uppercase">GEMINI API KEY</label>
+      <div className="flex gap-2">
+        <div className="relative flex-1 flex items-center bg-white/40 border border-slate-205 rounded-xl h-11 px-3">
+          <Key className="w-4 h-4 text-slate-400 mr-2" />
+          <input 
+            className="bg-transparent border-none text-xs font-mono font-bold text-slate-600 focus:outline-none w-full outline-none"
+            type="password" 
+            value={apiKeyInput}
+            onChange={(e) => setApiKeyInput(e.target.value)}
+            placeholder="AIzaSy... (leave blank to clear)"
+          />
+        </div>
+        <button
+          onClick={handleSave}
+          className="px-5 py-2.5 bg-primary text-white font-display text-xs font-bold rounded-xl hover:bg-secondary transition cursor-pointer shrink-0"
+        >
+          {saved ? 'Saved!' : 'Save Key'}
+        </button>
+      </div>
+      <p className="text-[10px] text-slate-400 font-medium">
+        Enables Gemini 2.5 Flash to automatically interpret your catalog demand, identify zero-result search opportunities, and suggest restocking priorities.
+      </p>
     </div>
   );
 }

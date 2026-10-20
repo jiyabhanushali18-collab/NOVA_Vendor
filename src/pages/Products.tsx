@@ -13,6 +13,7 @@ import {
 import { Product, ProfileInfo } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRupees } from '../utils/currency';
+import { trackProductView, trackProductSearch } from '../services/AnalyticsEventService';
 
 interface ProductsProps {
   products: Product[];
@@ -166,6 +167,11 @@ export default function Products({ products, profileInfo, isLoading = false, set
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
+              onBlur={() => {
+                if (searchQuery.trim().length >= 2) {
+                  trackProductSearch(searchQuery.trim(), filteredProducts.length, selectedCategory, profileInfo?.vendorId);
+                }
+              }}
               placeholder="Search products..."
               className="bg-transparent text-xs font-semibold focus:outline-none text-slate-700 w-36 sm:w-48 placeholder-slate-400 outline-none border-none p-0"
             />
@@ -212,7 +218,8 @@ export default function Products({ products, profileInfo, isLoading = false, set
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -10 }}
                       transition={{ duration: 0.3 }}
-                      className="hover:bg-white/40 transition-colors group"
+                      onClick={() => trackProductView(product.id, product.name, product.category, product.vendorId)}
+                      className="hover:bg-white/40 transition-colors group cursor-pointer"
                     >
                       {/* Product Thumbnail */}
                       <td className="p-5">

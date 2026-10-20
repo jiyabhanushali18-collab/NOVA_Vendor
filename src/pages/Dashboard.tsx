@@ -577,30 +577,25 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Empty State / Market Insights Card - High Aesthetic Polish */}
+        {/* Market Insights Card */}
         <div className="bg-white/70 backdrop-blur-md border border-slate-200/50 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-4">
-          <div className="w-16 h-16 rounded-3xl bg-secondary-fixed flex items-center justify-center animate-bounce shadow-md shadow-secondary-fixed/50" style={{ animationDuration: '3s' }}>
-            <Sparkles className="w-8 h-8 text-primary" />
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-secondary text-white flex items-center justify-center shadow-md shadow-primary/25">
+            <Sparkles className="w-7 h-7" />
           </div>
           <div>
-            <h4 className="font-display text-base font-bold text-slate-700">Market Insights</h4>
-            <p className="text-xs text-slate-400 font-medium max-w-[220px] mx-auto mt-1">
-              Collecting data for your next AI-generated product suggestion...
+            <h4 className="font-display text-base font-bold text-slate-800">Market Insights</h4>
+            <p className="text-xs text-slate-400 font-medium max-w-[230px] mx-auto mt-1 leading-relaxed">
+              Customer discovery, virtual AR try-on analytics, and AI recommendations.
             </p>
-          </div>
-          
-          {/* Skeleton indicators */}
-          <div className="w-full flex flex-col gap-2 opacity-40 select-none pointer-events-none">
-            <div className="h-1.5 bg-slate-300 rounded-full w-4/5 mx-auto animate-pulse"></div>
-            <div className="h-1.5 bg-slate-200 rounded-full w-2/3 mx-auto animate-pulse delay-75"></div>
           </div>
           
           <button 
             type="button"
-            onClick={() => setShowInsightsModal(true)}
-            className="text-primary hover:text-secondary font-bold text-xs select-none cursor-pointer border border-primary/20 hover:border-primary/50 bg-primary/5 px-4 py-1.5 rounded-full transition-all"
+            onClick={() => setActiveTab('marketInsights')}
+            className="text-white font-display font-bold text-xs select-none cursor-pointer bg-gradient-to-r from-primary to-secondary px-5 py-2.5 rounded-xl shadow-md shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-1.5"
           >
-            Coming Soon
+            <span>Explore Market Insights</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
