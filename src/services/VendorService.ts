@@ -1,12 +1,9 @@
 import {
-  collection,
   doc,
   getDoc,
-  getDocs,
   runTransaction,
   serverTimestamp,
-  setDoc,
-  type DocumentData
+  setDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ProfileInfo } from '../types';
@@ -31,47 +28,22 @@ export interface VendorRecord extends VendorSignupData {
 
 const VENDOR_ID_PREFIX = 'VEN';
 const VENDOR_ID_DIGITS = 3;
+const INITIAL_VENDOR_NUMBER = 5;
 const vendorCounterRef = doc(db, 'metadata', 'vendors');
 
 const readString = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 
-const readVendorNumber = (value: unknown) => {
-  const match = readString(value).match(/^VEN(\d+)$/i);
-  return match ? Number(match[1]) : 0;
-};
-
 const formatVendorId = (value: number) =>
   `${VENDOR_ID_PREFIX}${String(value).padStart(VENDOR_ID_DIGITS, '0')}`;
 
-type VendorDocumentCandidate = DocumentData & { id?: string };
-
-const highestVendorNumber = (docs: VendorDocumentCandidate[]) =>
-  docs.reduce(
-    (highest, data) => Math.max(highest, readVendorNumber(data.vendorId), readVendorNumber(data.id)),
-    0
-  );
-
 export const getNextVendorId = async () => {
-  const ownersSnapshot = await getDocs(collection(db, 'owner'));
-  const vendorsSnapshot = await getDocs(collection(db, 'vendors'));
   const counterSnapshot = await getDoc(vendorCounterRef);
-  const ownerDocs = ownersSnapshot.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id }));
-  const vendorDocs = vendorsSnapshot.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id }));
-  const counterNumber = counterSnapshot.exists()
-    ? Number(counterSnapshot.data().lastVendorNumber) || 0
-    : 0;
-  const nextNumber = Math.max(counterNumber, highestVendorNumber([...ownerDocs, ...vendorDocs])) + 1;
+  const counterNumber = counterSnapshot.exists() && Number.isFinite(Number(counterSnapshot.data().lastVendorNumber))
+    ? Number(counterSnapshot.data().lastVendorNumber)
+    : INITIAL_VENDOR_NUMBER;
+  const nextNumber = Math.max(counterNumber, INITIAL_VENDOR_NUMBER) + 1;
 
   return formatVendorId(nextNumber);
-};
-
-const getCurrentHighestVendorNumber = async () => {
-  const ownersSnapshot = await getDocs(collection(db, 'owner'));
-  const vendorsSnapshot = await getDocs(collection(db, 'vendors'));
-  const ownerDocs = ownersSnapshot.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id }));
-  const vendorDocs = vendorsSnapshot.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id }));
-
-  return highestVendorNumber([...ownerDocs, ...vendorDocs]);
 };
 
 export const buildProfileFromVendorDetails = (
@@ -94,13 +66,12 @@ export const createVendorProfile = async (
   email: string,
   details: VendorSignupData
 ) => {
-  const existingHighestVendorNumber = await getCurrentHighestVendorNumber();
   return runTransaction(db, async transaction => {
     const counterSnapshot = await transaction.get(vendorCounterRef);
     const lastVendorNumber = counterSnapshot.exists()
-      ? Number(counterSnapshot.data().lastVendorNumber) || 0
-      : existingHighestVendorNumber;
-    const nextVendorNumber = Math.max(lastVendorNumber, existingHighestVendorNumber) + 1;
+      ? Number(counterSnapshot.data().lastVendorNumber) || INITIAL_VENDOR_NUMBER
+      : INITIAL_VENDOR_NUMBER;
+    const nextVendorNumber = Math.max(lastVendorNumber, INITIAL_VENDOR_NUMBER) + 1;
     const vendorId = formatVendorId(nextVendorNumber);
     const detailsWithId = { ...details, vendorId };
     const profile = buildProfileFromVendorDetails(detailsWithId);

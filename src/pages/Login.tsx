@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Building, Hash, Mail, Lock, Eye, EyeOff, ShieldCheck, Globe, Loader2, ArrowRight, MapPin, Phone, User, Image as ImageIcon, Upload } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -12,30 +12,17 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, storage } from '../firebase';
 import { ProfileInfo } from '../types';
 import {
-  buildProfileFromVendorDetails,
   createVendorProfile,
-  getNextVendorId,
   type VendorSignupData
 } from '../services/VendorService';
 
 interface LoginProps {
   onLoginSuccess: (email: string, profile?: ProfileInfo) => void;
+  authProfileError?: string;
+  onSwitchAccount: () => Promise<void>;
 }
 
-type LocalUser = {
-  email: string;
-  password: string;
-  vendorDetails?: VendorSignupDetails;
-};
-
 type VendorSignupDetails = VendorSignupData & { vendorId: string };
-
-const LOCAL_AUTH_USERS_KEY = 'nova-local-auth-users';
-const LOCAL_AUTH_SESSION_KEY = 'nova-local-auth-session';
-const LOCAL_AUTH_REMEMBER_KEY = 'nova-local-auth-remember';
-const LOCAL_AUTH_PROFILE_KEY = 'nova-local-auth-profile';
-const DEMO_EMAIL = 'name@company.com';
-const DEMO_PASSWORD = 'password123';
 
 const uploadVendorLogo = async (file: File, vendorKey: string) => {
   const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-').toLowerCase();
@@ -72,76 +59,22 @@ const getAuthErrorMessage = (err: unknown) => {
     case 'auth/invalid-email':
       return 'Enter a valid email address.';
     case 'auth/network-request-failed':
-      return 'Firebase could not be reached. Local demo sign in is available.';
+      return 'Firebase could not be reached. Check your connection and try again.';
     case 'auth/operation-not-allowed':
     case 'auth/configuration-not-found':
-      return 'Email/password authentication is not enabled in Firebase. Local demo sign in is available.';
+      return 'Email/password authentication is not enabled in Firebase. Enable it in Firebase Authentication and try again.';
     case 'auth/unauthorized-domain':
     case 'auth/app-not-authorized':
     case 'auth/api-key-not-valid':
-      return 'Firebase is not configured for this app URL. Local demo sign in is available.';
+      return 'Firebase is not configured for this app URL. Check the Firebase app configuration and authorized domains.';
     default:
       return err instanceof Error ? err.message : 'Authentication failed. Please verify your credentials.';
   }
 };
 
-const readLocalUsers = (): LocalUser[] => {
-  try {
-    const value = window.localStorage.getItem(LOCAL_AUTH_USERS_KEY);
-    return value ? JSON.parse(value) : [];
-  } catch {
-    return [];
-  }
-};
-
-const writeLocalUsers = (users: LocalUser[]) => {
-  window.localStorage.setItem(LOCAL_AUTH_USERS_KEY, JSON.stringify(users));
-};
-
-const writeLocalProfile = (profile: ProfileInfo) => {
-  window.localStorage.setItem(LOCAL_AUTH_PROFILE_KEY, JSON.stringify(profile));
-};
-
-const completeLocalSignIn = (userEmail: string, shouldRemember: boolean) => {
-  const sessionStore = shouldRemember ? window.localStorage : window.sessionStorage;
-
-  window.localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
-  window.sessionStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
-  window.localStorage.setItem(LOCAL_AUTH_REMEMBER_KEY, shouldRemember ? 'true' : 'false');
-  sessionStore.setItem(LOCAL_AUTH_SESSION_KEY, userEmail);
-  return userEmail;
-};
-
-const signInLocally = (userEmail: string, userPassword: string, shouldRemember: boolean) => {
-  const normalizedEmail = userEmail.trim().toLowerCase();
-  const localUser = readLocalUsers().find(user => user.email === normalizedEmail);
-
-  if (localUser?.password === userPassword || (normalizedEmail === DEMO_EMAIL && userPassword === DEMO_PASSWORD)) {
-    if (localUser?.vendorDetails) {
-      writeLocalProfile(buildProfileFromVendorDetails(localUser.vendorDetails));
-    }
-    return completeLocalSignIn(normalizedEmail, shouldRemember);
-  }
-
-  throw new Error('The email or password is incorrect.');
-};
-
-const signUpLocally = (userEmail: string, userPassword: string, shouldRemember: boolean, vendorDetails: VendorSignupDetails) => {
-  const normalizedEmail = userEmail.trim().toLowerCase();
-  const users = readLocalUsers();
-
-  if (users.some(user => user.email === normalizedEmail)) {
-    throw new Error('An account already exists for this email. Try logging in instead.');
-  }
-
-  writeLocalUsers([...users, { email: normalizedEmail, password: userPassword, vendorDetails }]);
-  writeLocalProfile(buildProfileFromVendorDetails(vendorDetails));
-  return completeLocalSignIn(normalizedEmail, shouldRemember);
-};
-
-export default function Login({ onLoginSuccess }: LoginProps) {
-  const [email, setEmail] = useState('name@company.com');
-  const [password, setPassword] = useState('password123');
+export default function Login({ onLoginSuccess, authProfileError, onSwitchAccount }: LoginProps) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [isLoading, setIsLoading] = useState(false);
@@ -151,38 +84,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState('');
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [vendorDetails, setVendorDetails] = useState<VendorSignupDetails>({
-    companyName: 'Trendy Threads',
-    ownerName: 'Rahul Shah',
-    gstNumber: '27ABCDE1234F1Z5',
-    phoneNumber: '9876543210',
-    businessAddress: 'Mumbai, Maharashtra',
-    vendorId: 'VEN001'
+    companyName: '',
+    ownerName: '',
+    gstNumber: '',
+    phoneNumber: '',
+    businessAddress: '',
+    vendorId: ''
   });
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-
-  useEffect(() => {
-    if (mode !== 'signup') {
-      return;
-    }
-
-    let cancelled = false;
-
-    getNextVendorId()
-      .then(vendorId => {
-        if (!cancelled) {
-          setVendorDetails(prev => ({ ...prev, vendorId }));
-        }
-      })
-      .catch(err => {
-        // eslint-disable-next-line no-console
-        console.error('Failed to generate vendor ID from Firestore', err);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mode]);
 
   const updateVendorDetails = (field: keyof VendorSignupDetails, value: string) => {
     setVendorDetails(prev => ({ ...prev, [field]: value }));
@@ -209,7 +118,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setNotice('');
 
     if (password.length < 6) {
       setError('Use a password with at least 6 characters.');
@@ -258,35 +166,30 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
         const profile = await createVendorProfile(credential.user.uid, userEmail, { ...vendorSignupData, logoUrl });
         setVendorDetails(prev => ({ ...prev, vendorId: profile.vendorId || prev.vendorId }));
-        writeLocalProfile(profile);
         signupProfile = profile;
       }
 
-      setIsSuccess(true);
-      setTimeout(() => {
+      if (signupProfile) {
+        setIsSuccess(true);
         onLoginSuccess(userEmail, signupProfile);
-      }, 800);
+        return;
+      }
+
+      setIsLoading(false);
     } catch (err) {
-      if (mode === 'signup' && firebaseAccountCreated) {
-        setError('Firebase account was created, but vendor details could not be saved. Check Firestore rules for owner/vendors writes.');
+      if (mode === 'signup') {
+        if (firebaseAccountCreated) {
+          const code = getAuthErrorCode(err);
+          setError(`Firebase account was created, but vendor details could not be saved${code ? ` (${code})` : ''}. Check Firestore rules for owner/vendors writes.`);
+        } else {
+          setError(getAuthErrorMessage(err));
+        }
         setIsLoading(false);
         return;
       }
 
-      try {
-        const userEmail = mode === 'login'
-          ? signInLocally(email, password, keepSignedIn)
-          : signUpLocally(email, password, keepSignedIn, vendorDetails);
-
-        setNotice('Using local demo authentication because Firebase rejected the request.');
-        setIsSuccess(true);
-        setTimeout(() => {
-          onLoginSuccess(userEmail, mode === 'signup' ? buildProfileFromVendorDetails(vendorDetails) : undefined);
-        }, 800);
-      } catch {
-        setError(getAuthErrorMessage(err));
-        setIsLoading(false);
-      }
+      setError(getAuthErrorMessage(err));
+      setIsLoading(false);
     }
   };
 
@@ -327,6 +230,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {mode === 'login' && authProfileError && !isLoading && (
+              <div className="space-y-2" role="alert">
+                <p className="text-sm text-rose-500 font-medium">{authProfileError}</p>
+                <button
+                  type="button"
+                  onClick={onSwitchAccount}
+                  className="text-sm font-semibold text-primary hover:underline"
+                >
+                  Sign out and use another account
+                </button>
+              </div>
+            )}
+
             {/* Email field */}
             <div className="flex flex-col gap-2">
               <label htmlFor="email" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -390,7 +306,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       type="text"
                       value={vendorDetails.companyName}
                       onChange={(e) => updateVendorDetails('companyName', e.target.value)}
-                      placeholder="Trendy Threads"
+                      placeholder="Enter your company name"
                       required
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
                     />
@@ -442,7 +358,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       type="text"
                       value={vendorDetails.ownerName}
                       onChange={(e) => updateVendorDetails('ownerName', e.target.value)}
-                      placeholder="Rahul Shah"
+                      placeholder="Enter owner name"
                       required
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
                     />
@@ -459,7 +375,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       id="vendorId"
                       type="text"
                       value={vendorDetails.vendorId}
-                      placeholder="VEN001"
+                      placeholder="Assigned automatically"
                       readOnly
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-slate-100/60 font-medium text-slate-500 placeholder-slate-400 outline-none cursor-not-allowed"
                     />
@@ -568,12 +484,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               </p>
             )}
 
-            {notice && (
-              <p className="text-sm text-emerald-600 font-medium mt-2">
-                {notice}
-              </p>
-            )}
-
             <div className="text-center mt-2">
               {mode === 'login' ? (
                 <p className="text-sm text-slate-500">
@@ -583,7 +493,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     onClick={() => {
                       setMode('signup');
                       setError('');
-                      setNotice('');
                       setIsSuccess(false);
                     }}
                     className="font-bold text-primary hover:underline"
@@ -599,7 +508,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     onClick={() => {
                       setMode('login');
                       setError('');
-                      setNotice('');
                       setIsSuccess(false);
                     }}
                     className="font-bold text-primary hover:underline"

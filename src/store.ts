@@ -190,14 +190,14 @@ export const initialActivities: Activity[] = [
 ];
 
 export const initialProfile: ProfileInfo = {
-  storeName: 'Fashion Fushion',
-  companyName: 'Fashion Fushion',
-  vendorId: 'VEN001',
-  ownerName: 'Rahul Shah',
-  gstNumber: '27ABCDE1234F1Z5',
-  contactDetails: '+91 9876543210',
-  businessAddress: 'Mumbai, Maharashtra, India',
-  logoUrl: 'https://ui-avatars.com/api/?name=Fashion+Fushion&background=451ebb&color=fff&bold=true',
-  status: 'VERIFIED',
-  memberSince: 'Jun 2026'
+  storeName: '',
+  companyName: '',
+  vendorId: '',
+  ownerName: '',
+  gstNumber: '',
+  contactDetails: '',
+  businessAddress: '',
+  logoUrl: '',
+  status: 'PENDING',
+  memberSince: ''
 };

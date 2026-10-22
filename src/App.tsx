@@ -21,55 +21,46 @@ import { trackPurchaseCompleted } from './services/AnalyticsEventService';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-const LOCAL_AUTH_SESSION_KEY = 'nova-local-auth-session';
-const LOCAL_AUTH_REMEMBER_KEY = 'nova-local-auth-remember';
-const LOCAL_AUTH_PROFILE_KEY = 'nova-local-auth-profile';
+const fetchVendorProfile = async (uid: string, email: string): Promise<ProfileInfo | null> => {
+  const { collection, doc, getDoc, getDocs, query, where } = await import('firebase/firestore');
+  const ownerDoc = await getDoc(doc(db, 'owner', uid));
+  let data = ownerDoc.exists() ? ownerDoc.data() : null;
 
-const readLocalProfile = () => {
-  try {
-    const value = window.localStorage.getItem(LOCAL_AUTH_PROFILE_KEY);
-    return value ? JSON.parse(value) as ProfileInfo : null;
-  } catch {
+  if (!data?.vendorId) {
+    const vendorSnapshot = await getDocs(query(collection(db, 'vendors'), where('uid', '==', uid)));
+    if (!vendorSnapshot.empty) {
+      data = vendorSnapshot.docs[0].data();
+    }
+  }
+
+  if (!data?.vendorId && email) {
+    const vendorSnapshot = await getDocs(collection(db, 'vendors'));
+    const normalizedEmail = email.trim().toLowerCase();
+    const matchingVendor = vendorSnapshot.docs.find(snapshot =>
+      typeof snapshot.data().email === 'string'
+      && snapshot.data().email.trim().toLowerCase() === normalizedEmail
+    );
+    if (matchingVendor) {
+      data = matchingVendor.data();
+    }
+  }
+
+  if (!data) {
     return null;
   }
-};
 
-const fetchVendorProfile = async (uid: string): Promise<ProfileInfo | null> => {
-  try {
-    const { collection, doc, getDoc, getDocs, query, where } = await import('firebase/firestore');
-    // Fetch current vendor details from Firestore owner collection
-    const ownerDoc = await getDoc(doc(db, 'owner', uid));
-    let data = ownerDoc.exists() ? (ownerDoc.data() as any) : null;
-
-    // Fallback to vendors collection if the owner document is missing or incomplete
-    if (!data || !data.logoUrl) {
-      const vendorSnapshot = await getDocs(query(collection(db, 'vendors'), where('uid', '==', uid)));
-      if (!vendorSnapshot.empty) {
-        data = vendorSnapshot.docs[0].data() as any;
-      }
-    }
-
-    if (!data) {
-      return null;
-    }
-
-    return {
-      storeName: data.companyName || data.storeName || '',
-      companyName: data.companyName || data.storeName || '',
-      vendorId: data.vendorId,
-      ownerName: data.ownerName || '',
-      gstNumber: data.gstNumber || '',
-      contactDetails: data.contactDetails || '',
-      businessAddress: data.businessAddress || '',
-      logoUrl: data.logoUrl || '',
-      status: data.status || 'VERIFIED',
-      memberSince: data.memberSince || ''
-    };
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to fetch vendor profile', err);
-    return null;
-  }
+  return {
+    storeName: data.companyName || data.storeName || '',
+    companyName: data.companyName || data.storeName || '',
+    vendorId: data.vendorId,
+    ownerName: data.ownerName || '',
+    gstNumber: data.gstNumber || '',
+    contactDetails: data.contactDetails || data.phoneNumber || '',
+    businessAddress: data.businessAddress || data.location || data.address || '',
+    logoUrl: data.logoUrl || '',
+    status: data.status || 'VERIFIED',
+    memberSince: data.memberSince || ''
+  };
 };
 
 const readNumber = (...values: unknown[]) => {
@@ -261,33 +252,53 @@ const removeUndefinedFields = <T,>(value: T): T => {
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authProfileError, setAuthProfileError] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const rememberedLocalSession = window.localStorage.getItem(LOCAL_AUTH_REMEMBER_KEY) === 'true';
-
-    if (!rememberedLocalSession) {
-      window.localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
-    }
+    window.localStorage.removeItem('nova-local-auth-users');
+    window.localStorage.removeItem('nova-local-auth-session');
+    window.localStorage.removeItem('nova-local-auth-remember');
+    window.localStorage.removeItem('nova-local-auth-profile');
+    window.sessionStorage.removeItem('nova-local-auth-session');
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      const hasLocalSession = !!window.sessionStorage.getItem(LOCAL_AUTH_SESSION_KEY)
-        || (rememberedLocalSession && !!window.localStorage.getItem(LOCAL_AUTH_SESSION_KEY));
+      setIsLoggedIn(false);
+      setAuthProfileError('');
 
-      if (user || hasLocalSession) {
-        if (user) {
-          const vendorProfile = await fetchVendorProfile(user.uid);
-          if (vendorProfile) {
-            setProfileInfo(vendorProfile);
+      if (user) {
+        try {
+          const vendorProfile = await fetchVendorProfile(user.uid, user.email || '');
+          if (auth.currentUser?.uid !== user.uid) {
+            return;
           }
-        } else {
-          const localProfile = readLocalProfile();
-          if (localProfile) {
-            setProfileInfo(localProfile);
+
+          if (!vendorProfile) {
+            setAuthProfileError(
+              `No vendor profile matched the signed-in Firebase email "${user.email || 'unknown'}". Sign in with the same email saved in the Firestore vendor document, or create a vendor profile for this account.`
+            );
+            return;
           }
+
+          setProfileInfo(vendorProfile);
+          setIsLoggedIn(true);
+        } catch (err) {
+          if (auth.currentUser?.uid !== user.uid) {
+            return;
+          }
+
+          // eslint-disable-next-line no-console
+          console.error('Failed to fetch vendor profile', err);
+          const errorCode = err && typeof err === 'object' && 'code' in err
+            ? String(err.code)
+            : '';
+          setAuthProfileError(
+            errorCode.endsWith('permission-denied')
+              ? 'Firebase signed you in, but Firestore rules block reading this vendor profile. Allow the signed-in user to read their own owner document (owner/{uid}) in Firestore Rules.'
+              : `Could not load the vendor profile from Firebase: ${err instanceof Error ? err.message : 'Unknown error'}`
+          );
         }
-        setIsLoggedIn(true);
         return;
       }
 
@@ -439,15 +450,12 @@ export default function App() {
   }, [isLoggedIn]);
 
   const handleLoginSuccess = (email: string, profile?: ProfileInfo) => {
-    if (profile) {
-      setProfileInfo(profile);
-    } else {
-      const localProfile = readLocalProfile();
-      if (localProfile) {
-        setProfileInfo(localProfile);
-      }
+    if (!profile) {
+      return;
     }
 
+    setProfileInfo(profile);
+    setAuthProfileError('');
     setIsLoggedIn(true);
     // Add dynamic activity indicating login
     setActivities(prev => [
@@ -455,7 +463,7 @@ export default function App() {
         id: 'login-' + Date.now(),
         type: 'verification',
         title: 'Partner Signed In',
-        description: `Successfully signed in as ${profile?.ownerName ?? readLocalProfile()?.ownerName ?? email}`,
+        description: `Successfully signed in as ${profile.ownerName || email}`,
         time: 'Just now'
       },
       ...prev
@@ -469,12 +477,19 @@ export default function App() {
       // eslint-disable-next-line no-console
       console.error('Logout failed', err);
     }
-    window.localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
-    window.localStorage.removeItem(LOCAL_AUTH_REMEMBER_KEY);
-    window.localStorage.removeItem(LOCAL_AUTH_PROFILE_KEY);
-    window.sessionStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
     setIsLoggedIn(false);
     setActiveTab('dashboard');
+  };
+
+  const handleSwitchAccount = async () => {
+    try {
+      await signOut(auth);
+      setAuthProfileError('');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to switch Firebase account', err);
+      setAuthProfileError(`Could not sign out of the current Firebase account: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   };
 
   const handleAddProduct = async (newProd: Omit<Product, 'id'>) => {
@@ -666,7 +681,13 @@ export default function App() {
   };
 
   if (!isLoggedIn) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <Login
+        onLoginSuccess={handleLoginSuccess}
+        authProfileError={authProfileError}
+        onSwitchAccount={handleSwitchAccount}
+      />
+    );
   }
 
   return (
