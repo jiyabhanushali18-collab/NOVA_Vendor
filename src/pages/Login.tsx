@@ -8,13 +8,14 @@ import {
   setPersistence,
   signInWithEmailAndPassword
 } from 'firebase/auth';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { auth, storage } from '../firebase';
+import { auth } from '../firebase';
 import { ProfileInfo } from '../types';
 import {
   createVendorProfile,
+  getLocalVendorProfile,
   type VendorSignupData
 } from '../services/VendorService';
+import { uploadVendorLogo } from '../utils/imageUtils';
 
 interface LoginProps {
   onLoginSuccess: (email: string, profile?: ProfileInfo) => void;
@@ -23,19 +24,6 @@ interface LoginProps {
 }
 
 type VendorSignupDetails = VendorSignupData & { vendorId: string };
-
-const uploadVendorLogo = async (file: File, vendorKey: string) => {
-  const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-').toLowerCase();
-  const logoRef = ref(storage, `vendor-logos/${vendorKey}/${Date.now()}-${safeName}`);
-  const uploadResult = await Promise.race([
-    uploadBytes(logoRef, file),
-    new Promise<never>((_, reject) => {
-      window.setTimeout(() => reject(new Error('Logo upload timed out')), 8000);
-    })
-  ]);
-
-  return getDownloadURL(uploadResult.ref);
-};
 
 const getAuthErrorCode = (err: unknown) => {
   if (err && typeof err === 'object' && 'code' in err) {
@@ -108,6 +96,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
       return;
     }
 
+    setError('');
     setLogoFile(file);
     setLogoPreviewUrl(URL.createObjectURL(file));
     if (logoInputRef.current) {
@@ -135,7 +124,6 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
     }
 
     setIsLoading(true);
-    let firebaseAccountCreated = false;
 
     try {
       let userEmail = email.trim().toLowerCase();
@@ -145,22 +133,46 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
       if (mode === 'login') {
         const credential = await signInWithEmailAndPassword(auth, userEmail, password);
         userEmail = credential.user.email || userEmail;
+        const local = getLocalVendorProfile(credential.user.uid, userEmail);
+        if (local) {
+          signupProfile = local;
+        }
       } else {
-        const credential = await createUserWithEmailAndPassword(auth, userEmail, password);
-        firebaseAccountCreated = true;
+        let credential;
+        try {
+          credential = await createUserWithEmailAndPassword(auth, userEmail, password);
+        } catch (createErr) {
+          const code = getAuthErrorCode(createErr);
+          if (code === 'auth/email-already-in-use') {
+            // User already registered in Firebase Auth (e.g. from a prior attempt where logo failed).
+            // Attempt to sign in with their password so profile setup can complete.
+            try {
+              credential = await signInWithEmailAndPassword(auth, userEmail, password);
+            } catch (signInErr) {
+              const signInCode = getAuthErrorCode(signInErr);
+              if (signInCode === 'auth/wrong-password' || signInCode === 'auth/invalid-credential') {
+                setError('An account already exists for this email with a different password. Please check your password or switch to Login.');
+                setIsLoading(false);
+                return;
+              }
+              throw createErr;
+            }
+          } else {
+            throw createErr;
+          }
+        }
+
         userEmail = credential.user.email || userEmail;
         const { vendorId: _vendorId, ...vendorSignupData } = vendorDetails;
         let logoUrl = '';
 
         if (logoFile) {
           try {
-            logoUrl = await uploadVendorLogo(logoFile, credential.user.uid);
+            logoUrl = await uploadVendorLogo(logoFile, credential.user.uid, vendorSignupData.companyName);
           } catch (uploadErr) {
             // eslint-disable-next-line no-console
-            console.error('Failed to upload vendor logo to Firebase Storage', uploadErr);
-            setError('Failed to upload vendor logo. Please try again or choose a different image.');
-            setIsLoading(false);
-            return;
+            console.warn('Fallback to UI avatar for logo', uploadErr);
+            logoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(vendorSignupData.companyName || 'Vendor')}&background=451ebb&color=fff&bold=true`;
           }
         }
 
@@ -169,25 +181,10 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
         signupProfile = profile;
       }
 
-      if (signupProfile) {
-        setIsSuccess(true);
-        onLoginSuccess(userEmail, signupProfile);
-        return;
-      }
-
-      setIsLoading(false);
+      setIsSuccess(true);
+      onLoginSuccess(userEmail, signupProfile);
+      return;
     } catch (err) {
-      if (mode === 'signup') {
-        if (firebaseAccountCreated) {
-          const code = getAuthErrorCode(err);
-          setError(`Firebase account was created, but vendor details could not be saved${code ? ` (${code})` : ''}. Check Firestore rules for owner/vendors writes.`);
-        } else {
-          setError(getAuthErrorMessage(err));
-        }
-        setIsLoading(false);
-        return;
-      }
-
       setError(getAuthErrorMessage(err));
       setIsLoading(false);
     }

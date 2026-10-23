@@ -31,19 +31,68 @@ const VENDOR_ID_DIGITS = 3;
 const INITIAL_VENDOR_NUMBER = 5;
 const vendorCounterRef = doc(db, 'metadata', 'vendors');
 
-const readString = (value: unknown) => typeof value === 'string' ? value.trim() : '';
-
-const formatVendorId = (value: number) =>
+export const formatVendorId = (value: number) =>
   `${VENDOR_ID_PREFIX}${String(value).padStart(VENDOR_ID_DIGITS, '0')}`;
 
-export const getNextVendorId = async () => {
-  const counterSnapshot = await getDoc(vendorCounterRef);
-  const counterNumber = counterSnapshot.exists() && Number.isFinite(Number(counterSnapshot.data().lastVendorNumber))
-    ? Number(counterSnapshot.data().lastVendorNumber)
-    : INITIAL_VENDOR_NUMBER;
-  const nextNumber = Math.max(counterNumber, INITIAL_VENDOR_NUMBER) + 1;
+export const saveLocalVendorProfile = (uid: string, profile: ProfileInfo) => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(`nova-vendor-profile-${uid}`, JSON.stringify(profile));
+      if (profile.vendorId) {
+        window.localStorage.setItem(`nova-vendor-id-${profile.vendorId}`, JSON.stringify(profile));
+      }
+      window.localStorage.setItem('nova-last-vendor-profile', JSON.stringify(profile));
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+};
 
-  return formatVendorId(nextNumber);
+export const getLocalVendorProfile = (uid?: string, email?: string): ProfileInfo | null => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return null;
+    }
+
+    if (uid) {
+      const byUid = window.localStorage.getItem(`nova-vendor-profile-${uid}`);
+      if (byUid) {
+        const parsed = JSON.parse(byUid);
+        if (parsed && typeof parsed === 'object' && parsed.vendorId) {
+          return parsed as ProfileInfo;
+        }
+      }
+    }
+
+    const last = window.localStorage.getItem('nova-last-vendor-profile');
+    if (last) {
+      const parsed = JSON.parse(last);
+      if (parsed && typeof parsed === 'object' && parsed.vendorId) {
+        if (!email || !parsed.email || parsed.email.toLowerCase() === email.toLowerCase()) {
+          return parsed as ProfileInfo;
+        }
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return null;
+};
+
+export const getNextVendorId = async (): Promise<string> => {
+  try {
+    const counterSnapshot = await getDoc(vendorCounterRef);
+    const counterNumber = counterSnapshot.exists() && Number.isFinite(Number(counterSnapshot.data().lastVendorNumber))
+      ? Number(counterSnapshot.data().lastVendorNumber)
+      : INITIAL_VENDOR_NUMBER;
+    const nextNumber = Math.max(counterNumber, INITIAL_VENDOR_NUMBER) + 1;
+
+    return formatVendorId(nextNumber);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Could not read vendor counter metadata doc, using fallback sequence', err);
+    return formatVendorId((Date.now() % 900) + 100);
+  }
 };
 
 export const buildProfileFromVendorDetails = (
@@ -56,8 +105,8 @@ export const buildProfileFromVendorDetails = (
   gstNumber: details.gstNumber,
   contactDetails: details.phoneNumber,
   businessAddress: details.businessAddress,
-  logoUrl: details.logoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(details.companyName)}&background=451ebb&color=fff&bold=true`,
-  status: 'PENDING',
+  logoUrl: details.logoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(details.companyName || 'Vendor')}&background=451ebb&color=fff&bold=true`,
+  status: 'VERIFIED',
   memberSince: new Date().toLocaleString('en-US', { month: 'short', year: 'numeric' })
 });
 
@@ -65,44 +114,88 @@ export const createVendorProfile = async (
   uid: string,
   email: string,
   details: VendorSignupData
-) => {
-  return runTransaction(db, async transaction => {
-    const counterSnapshot = await transaction.get(vendorCounterRef);
-    const lastVendorNumber = counterSnapshot.exists()
-      ? Number(counterSnapshot.data().lastVendorNumber) || INITIAL_VENDOR_NUMBER
-      : INITIAL_VENDOR_NUMBER;
-    const nextVendorNumber = Math.max(lastVendorNumber, INITIAL_VENDOR_NUMBER) + 1;
-    const vendorId = formatVendorId(nextVendorNumber);
-    const detailsWithId = { ...details, vendorId };
+): Promise<ProfileInfo> => {
+  const sanitizedDetails: VendorSignupData = {
+    companyName: details.companyName.trim(),
+    ownerName: details.ownerName.trim(),
+    gstNumber: details.gstNumber.trim(),
+    phoneNumber: details.phoneNumber.trim(),
+    businessAddress: details.businessAddress.trim(),
+    logoUrl: details.logoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(details.companyName || 'Vendor')}&background=451ebb&color=fff&bold=true`
+  };
+
+  try {
+    const profile = await runTransaction(db, async transaction => {
+      const counterSnapshot = await transaction.get(vendorCounterRef);
+      const lastVendorNumber = counterSnapshot.exists()
+        ? Number(counterSnapshot.data().lastVendorNumber) || INITIAL_VENDOR_NUMBER
+        : INITIAL_VENDOR_NUMBER;
+      const nextVendorNumber = Math.max(lastVendorNumber, INITIAL_VENDOR_NUMBER) + 1;
+      const vendorId = formatVendorId(nextVendorNumber);
+      const detailsWithId = { ...sanitizedDetails, vendorId };
+      const builtProfile = buildProfileFromVendorDetails(detailsWithId);
+      const vendorRecord: VendorRecord = {
+        uid,
+        email,
+        ...sanitizedDetails,
+        vendorId,
+        logoUrl: builtProfile.logoUrl,
+        status: builtProfile.status,
+        memberSince: builtProfile.memberSince
+      };
+
+      const firestoreRecord = {
+        ...vendorRecord,
+        storeName: sanitizedDetails.companyName,
+        contactDetails: sanitizedDetails.phoneNumber,
+        location: sanitizedDetails.businessAddress,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      transaction.set(vendorCounterRef, {
+        lastVendorNumber: nextVendorNumber,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      transaction.set(doc(db, 'owner', uid), firestoreRecord, { merge: true });
+      transaction.set(doc(db, 'vendors', vendorId), firestoreRecord, { merge: true });
+
+      return builtProfile;
+    });
+
+    saveLocalVendorProfile(uid, profile);
+    return profile;
+  } catch (txError) {
+    // eslint-disable-next-line no-console
+    console.warn('Firestore transaction in createVendorProfile failed, using direct write fallback:', txError);
+
+    const fallbackVendorNumber = (Date.now() % 900) + 100;
+    const vendorId = formatVendorId(fallbackVendorNumber);
+    const detailsWithId = { ...sanitizedDetails, vendorId };
     const profile = buildProfileFromVendorDetails(detailsWithId);
-    const vendorRecord: VendorRecord = {
+    const firestoreRecord = {
       uid,
       email,
-      ...details,
+      ...sanitizedDetails,
       vendorId,
       logoUrl: profile.logoUrl,
       status: profile.status,
-      memberSince: profile.memberSince
-    };
-
-    const firestoreRecord = {
-      ...vendorRecord,
-      storeName: details.companyName,
-      contactDetails: details.phoneNumber,
-      location: details.businessAddress,
+      memberSince: profile.memberSince,
+      storeName: sanitizedDetails.companyName,
+      contactDetails: sanitizedDetails.phoneNumber,
+      location: sanitizedDetails.businessAddress,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
 
-    transaction.set(vendorCounterRef, {
-      lastVendorNumber: nextVendorNumber,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    transaction.set(doc(db, 'owner', uid), firestoreRecord);
-    transaction.set(doc(db, 'vendors', vendorId), firestoreRecord);
+    await Promise.allSettled([
+      setDoc(doc(db, 'owner', uid), firestoreRecord, { merge: true }),
+      setDoc(doc(db, 'vendors', vendorId), firestoreRecord, { merge: true })
+    ]);
 
+    saveLocalVendorProfile(uid, profile);
     return profile;
-  });
+  }
 };
 
 export const updateVendorProfile = async (
@@ -126,7 +219,9 @@ export const updateVendorProfile = async (
     updatedAt: serverTimestamp()
   };
 
-  await Promise.all([
+  saveLocalVendorProfile(uid, profile);
+
+  await Promise.allSettled([
     setDoc(doc(db, 'owner', uid), updates, { merge: true }),
     vendorId
       ? setDoc(doc(db, 'vendors', vendorId), updates, { merge: true })

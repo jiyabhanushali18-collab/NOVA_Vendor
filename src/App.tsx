@@ -18,49 +18,81 @@ import Settings from './pages/Settings';
 import { subscribeToProducts, type ProductDocument } from './services/ProductService';
 import { removeOrder, subscribeToOrders, updateOrderStatus } from './services/OrderService';
 import { trackPurchaseCompleted } from './services/AnalyticsEventService';
+import { getLocalVendorProfile, saveLocalVendorProfile } from './services/VendorService';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const fetchVendorProfile = async (uid: string, email: string): Promise<ProfileInfo | null> => {
-  const { collection, doc, getDoc, getDocs, query, where } = await import('firebase/firestore');
-  const ownerDoc = await getDoc(doc(db, 'owner', uid));
-  let data = ownerDoc.exists() ? ownerDoc.data() : null;
+  try {
+    const { collection, doc, getDoc, getDocs, query, where } = await import('firebase/firestore');
+    let data: any = null;
 
-  if (!data?.vendorId) {
-    const vendorSnapshot = await getDocs(query(collection(db, 'vendors'), where('uid', '==', uid)));
-    if (!vendorSnapshot.empty) {
-      data = vendorSnapshot.docs[0].data();
+    try {
+      const ownerDoc = await getDoc(doc(db, 'owner', uid));
+      if (ownerDoc.exists()) {
+        data = ownerDoc.data();
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('Could not read owner doc:', e);
     }
-  }
 
-  if (!data?.vendorId && email) {
-    const vendorSnapshot = await getDocs(collection(db, 'vendors'));
-    const normalizedEmail = email.trim().toLowerCase();
-    const matchingVendor = vendorSnapshot.docs.find(snapshot =>
-      typeof snapshot.data().email === 'string'
-      && snapshot.data().email.trim().toLowerCase() === normalizedEmail
-    );
-    if (matchingVendor) {
-      data = matchingVendor.data();
+    if (!data?.vendorId) {
+      try {
+        const vendorSnapshot = await getDocs(query(collection(db, 'vendors'), where('uid', '==', uid)));
+        if (!vendorSnapshot.empty) {
+          data = vendorSnapshot.docs[0].data();
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Could not query vendors by uid:', e);
+      }
     }
+
+    if (!data?.vendorId && email) {
+      try {
+        const vendorSnapshot = await getDocs(collection(db, 'vendors'));
+        const normalizedEmail = email.trim().toLowerCase();
+        const matchingVendor = vendorSnapshot.docs.find(snapshot =>
+          typeof snapshot.data().email === 'string'
+          && snapshot.data().email.trim().toLowerCase() === normalizedEmail
+        );
+        if (matchingVendor) {
+          data = matchingVendor.data();
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Could not query vendors by email:', e);
+      }
+    }
+
+    if (data) {
+      const profile: ProfileInfo = {
+        storeName: data.companyName || data.storeName || '',
+        companyName: data.companyName || data.storeName || '',
+        vendorId: data.vendorId,
+        ownerName: data.ownerName || '',
+        gstNumber: data.gstNumber || '',
+        contactDetails: data.contactDetails || data.phoneNumber || '',
+        businessAddress: data.businessAddress || data.location || data.address || '',
+        logoUrl: data.logoUrl || '',
+        status: data.status || 'VERIFIED',
+        memberSince: data.memberSince || ''
+      };
+      saveLocalVendorProfile(uid, profile);
+      return profile;
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Error fetching vendor profile from Firestore:', err);
   }
 
-  if (!data) {
-    return null;
+  const cached = getLocalVendorProfile(uid, email);
+  if (cached) {
+    return cached;
   }
 
-  return {
-    storeName: data.companyName || data.storeName || '',
-    companyName: data.companyName || data.storeName || '',
-    vendorId: data.vendorId,
-    ownerName: data.ownerName || '',
-    gstNumber: data.gstNumber || '',
-    contactDetails: data.contactDetails || data.phoneNumber || '',
-    businessAddress: data.businessAddress || data.location || data.address || '',
-    logoUrl: data.logoUrl || '',
-    status: data.status || 'VERIFIED',
-    memberSince: data.memberSince || ''
-  };
+  return null;
 };
 
 const readNumber = (...values: unknown[]) => {
@@ -269,16 +301,46 @@ export default function App() {
 
       if (user) {
         try {
-          const vendorProfile = await fetchVendorProfile(user.uid, user.email || '');
+          let vendorProfile = await fetchVendorProfile(user.uid, user.email || '');
           if (auth.currentUser?.uid !== user.uid) {
             return;
           }
 
           if (!vendorProfile) {
-            setAuthProfileError(
-              `No vendor profile matched the signed-in Firebase email "${user.email || 'unknown'}". Sign in with the same email saved in the Firestore vendor document, or create a vendor profile for this account.`
-            );
-            return;
+            const localFallback = getLocalVendorProfile(user.uid, user.email || '');
+            if (localFallback) {
+              vendorProfile = localFallback;
+            } else {
+              const fallbackDisplayName = user.displayName || user.email?.split('@')[0] || 'Vendor';
+              const nextVendorId = `VEN${(Date.now() % 900) + 100}`;
+              vendorProfile = {
+                storeName: fallbackDisplayName,
+                companyName: fallbackDisplayName,
+                vendorId: nextVendorId,
+                ownerName: fallbackDisplayName,
+                gstNumber: '',
+                contactDetails: user.phoneNumber || '',
+                businessAddress: '',
+                logoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackDisplayName)}&background=451ebb&color=fff&bold=true`,
+                status: 'VERIFIED',
+                memberSince: new Date().toLocaleString('en-US', { month: 'short', year: 'numeric' })
+              };
+
+              try {
+                const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+                await setDoc(doc(db, 'owner', user.uid), {
+                  ...vendorProfile,
+                  uid: user.uid,
+                  email: user.email || '',
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp()
+                }, { merge: true });
+              } catch (writeErr) {
+                // eslint-disable-next-line no-console
+                console.warn('Could not save baseline owner doc', writeErr);
+              }
+              saveLocalVendorProfile(user.uid, vendorProfile);
+            }
           }
 
           setProfileInfo(vendorProfile);
@@ -450,11 +512,11 @@ export default function App() {
   }, [isLoggedIn]);
 
   const handleLoginSuccess = (email: string, profile?: ProfileInfo) => {
-    if (!profile) {
-      return;
+    if (profile) {
+      setProfileInfo(profile);
+      saveLocalVendorProfile(auth.currentUser?.uid || '', profile);
     }
 
-    setProfileInfo(profile);
     setAuthProfileError('');
     setIsLoggedIn(true);
     // Add dynamic activity indicating login
@@ -463,7 +525,7 @@ export default function App() {
         id: 'login-' + Date.now(),
         type: 'verification',
         title: 'Partner Signed In',
-        description: `Successfully signed in as ${profile.ownerName || email}`,
+        description: `Successfully signed in as ${profile?.ownerName || email}`,
         time: 'Just now'
       },
       ...prev

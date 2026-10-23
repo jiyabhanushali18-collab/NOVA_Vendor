@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import {
   Building, 
   User, 
-  Mail, 
   Phone, 
   MapPin, 
   ShieldCheck, 
@@ -13,9 +12,9 @@ import {
   Layers
 } from 'lucide-react';
 import { ProfileInfo } from '../types';
-import { auth, storage } from '../firebase';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { auth } from '../firebase';
 import { updateVendorProfile } from '../services/VendorService';
+import { uploadVendorLogo } from '../utils/imageUtils';
 
 interface ProfileProps {
   profileInfo: ProfileInfo;
@@ -64,16 +63,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
     }
 
     const vendorKey = profileInfo.vendorId || auth.currentUser?.uid || 'vendor';
-    const safeName = logoFile.name.replace(/[^a-z0-9._-]/gi, '-').toLowerCase();
-    const logoRef = ref(storage, `vendor-logos/${vendorKey}/${Date.now()}-${safeName}`);
-    const uploadResult = await Promise.race([
-      uploadBytes(logoRef, logoFile),
-      new Promise<never>((_, reject) => {
-        window.setTimeout(() => reject(new Error('Logo upload timed out')), 8000);
-      })
-    ]);
-
-    return getDownloadURL(uploadResult.ref);
+    return uploadVendorLogo(logoFile, vendorKey, storeName || profileInfo.companyName);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
