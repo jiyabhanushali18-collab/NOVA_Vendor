@@ -9,6 +9,11 @@ import {
   signInWithEmailAndPassword
 } from 'firebase/auth';
 import { auth } from '../firebase';
+import {
+  requestVendorPasswordReset,
+  resetVendorPassword,
+  verifyVendorPasswordResetCode
+} from '../services/PasswordResetService';
 import { ProfileInfo } from '../types';
 import {
   createVendorProfile,
@@ -60,11 +65,37 @@ const getAuthErrorMessage = (err: unknown) => {
   }
 };
 
+const getPasswordResetErrorMessage = (err: unknown) => {
+  const code = getAuthErrorCode(err);
+  const message = err instanceof Error ? err.message : '';
+
+  switch (code) {
+    case 'functions/not-found':
+      return 'The password reset service is not deployed yet. Ask your administrator to deploy the Firebase Functions.';
+    case 'functions/internal':
+    case 'internal':
+      return 'The password reset service is unavailable. Check that Firebase Functions are deployed and SendGrid is configured.';
+    case 'functions/unavailable':
+    case 'functions/deadline-exceeded':
+      return 'The password reset service could not be reached. Please try again later.';
+    case 'functions/resource-exhausted':
+      return message || 'Too many requests. Please wait before trying again.';
+    default:
+      return message || 'Password reset failed. Please try again.';
+  }
+};
+
 export default function Login({ onLoginSuccess, authProfileError, onSwitchAccount }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
+  const [forgotStep, setForgotStep] = useState<'email' | 'code' | 'password'>('email');
+  const [resetCode, setResetCode] = useState('');
+  const [resetChallenge, setResetChallenge] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
@@ -107,6 +138,46 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (mode === 'forgot') {
+      setIsLoading(true);
+      try {
+        const userEmail = email.trim().toLowerCase();
+        if (forgotStep === 'email') {
+          await requestVendorPasswordReset(userEmail);
+          setForgotStep('code');
+          setResetMessage('If an account exists for this address, a verification code has been sent.');
+        } else if (forgotStep === 'code') {
+          const { challengeToken } = await verifyVendorPasswordResetCode(userEmail, resetCode);
+          setResetChallenge(challengeToken);
+          setForgotStep('password');
+          setResetMessage('');
+        } else {
+          if (newPassword.length < 6) {
+            setError('Use a password with at least 6 characters.');
+            return;
+          }
+          if (newPassword !== confirmNewPassword) {
+            setError('Passwords do not match.');
+            return;
+          }
+          await resetVendorPassword(userEmail, resetChallenge, newPassword);
+          setMode('login');
+          setPassword('');
+          setResetCode('');
+          setNewPassword('');
+          setConfirmNewPassword('');
+          setResetChallenge('');
+          setForgotStep('email');
+          setResetMessage('Your password has been reset. Sign in with your new password.');
+        }
+      } catch (err) {
+        setError(getPasswordResetErrorMessage(err));
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
 
     if (password.length < 6) {
       setError('Use a password with at least 6 characters.');
@@ -217,16 +288,132 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
         >
           <div className="flex flex-col mb-8">
             <h2 className="font-display text-2xl font-bold text-slate-800">
-              Vendor Portal
+              {mode === 'forgot' ? 'Forgot Password' : 'Vendor Portal'}
             </h2>
             <p className="text-slate-400 font-medium text-sm mt-1">
-              {mode === 'login'
-                ? 'Sign in to manage your product catalog'
-                : 'Create an account to manage your product catalog'}
+              {mode === 'forgot'
+                ? forgotStep === 'email'
+                  ? 'Reset your vendor account password'
+                  : forgotStep === 'code'
+                    ? 'Enter the verification code sent to your email'
+                    : 'Choose a new password for your account'
+                : mode === 'login'
+                  ? 'Sign in to manage your product catalog'
+                  : 'Create an account to manage your product catalog'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {mode === 'forgot' ? (
+              <>
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="email" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Email Address
+                  </label>
+                  <div className="relative group">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="vendor@example.com"
+                      required
+                      readOnly={forgotStep !== 'email'}
+                      className="w-full h-14 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none read-only:opacity-70"
+                    />
+                  </div>
+                </div>
+
+                {forgotStep === 'code' && (
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="resetCode" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      6-digit verification code
+                    </label>
+                    <input
+                      id="resetCode"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]{6}"
+                      maxLength={6}
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="••••••"
+                      required
+                      className="w-full h-14 px-4 rounded-xl border border-primary/25 bg-white/40 text-center text-2xl font-semibold tracking-[0.5em] text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                    />
+                    <p className="text-xs text-slate-400">Enter the code sent to your registered email.</p>
+                  </div>
+                )}
+
+                {forgotStep === 'password' && (
+                  <>
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="newPassword" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        New password
+                      </label>
+                      <input
+                        id="newPassword"
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="At least 6 characters"
+                        minLength={6}
+                        required
+                        className="w-full h-14 px-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="confirmNewPassword" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        Confirm new password
+                      </label>
+                      <input
+                        id="confirmNewPassword"
+                        type="password"
+                        autoComplete="new-password"
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="Enter your new password again"
+                        minLength={6}
+                        required
+                        className="w-full h-14 px-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="flex items-center justify-between text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setForgotStep('email');
+                      setResetMessage('');
+                      setError('');
+                    }}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    Back to login
+                  </button>
+                  {forgotStep === 'code' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotStep('email');
+                        setResetMessage('');
+                        setError('');
+                      }}
+                      className="font-semibold text-slate-500 hover:underline"
+                    >
+                      Change email
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
             {mode === 'login' && authProfileError && !isLoading && (
               <div className="space-y-2" role="alert">
                 <p className="text-sm text-rose-500 font-medium">{authProfileError}</p>
@@ -265,9 +452,20 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                 <label htmlFor="password" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
                   Password
                 </label>
-                <a href="#reset" className="text-xs font-semibold text-primary hover:text-secondary transition-colors duration-200">
-                  Forgot Password?
-                </a>
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot');
+                      setForgotStep('email');
+                      setResetMessage('');
+                      setError('');
+                    }}
+                    className="text-xs font-semibold text-primary hover:text-secondary transition-colors duration-200"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
               </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors duration-200" />
@@ -450,6 +648,8 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                 </span>
               </label>
             </div>
+              </>
+            )}
 
             {/* Submit button */}
             <button
@@ -469,19 +669,35 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                 </svg>
               ) : (
                 <>
-                  <span>{mode === 'login' ? 'Login to Portal' : 'Create Account'}</span>
+                  <span>
+                    {mode === 'forgot'
+                      ? forgotStep === 'email'
+                        ? 'Send verification code'
+                        : forgotStep === 'code'
+                          ? 'Verify code'
+                          : 'Reset Password'
+                      : mode === 'login'
+                        ? 'Login to Portal'
+                        : 'Create Account'}
+                  </span>
                   <ArrowRight className="w-5 h-5" />
                 </>
               )}
             </button>
 
+            {resetMessage && (
+              <p className="text-sm text-emerald-700 font-medium mt-2" role="status">
+                {resetMessage}
+              </p>
+            )}
+
             {error && (
-              <p className="text-sm text-rose-500 font-medium mt-2">
+              <p className="text-sm text-rose-500 font-medium mt-2" role="alert">
                 {error}
               </p>
             )}
 
-            <div className="text-center mt-2">
+            {mode !== 'forgot' && <div className="text-center mt-2">
               {mode === 'login' ? (
                 <p className="text-sm text-slate-500">
                   New here?{' '}
@@ -490,6 +706,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                     onClick={() => {
                       setMode('signup');
                       setError('');
+                      setResetMessage('');
                       setIsSuccess(false);
                     }}
                     className="font-bold text-primary hover:underline"
@@ -505,6 +722,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                     onClick={() => {
                       setMode('login');
                       setError('');
+                      setResetMessage('');
                       setIsSuccess(false);
                     }}
                     className="font-bold text-primary hover:underline"
@@ -513,18 +731,18 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                   </button>
                 </p>
               )}
-            </div>
+            </div>}
           </form>
 
           {/* Partnership note */}
-          <div className="mt-8 pt-6 border-t border-slate-200/50 text-center">
+          {mode !== 'forgot' && <div className="mt-8 pt-6 border-t border-slate-200/50 text-center">
             <p className="text-xs text-slate-400 font-medium leading-relaxed">
               New to the network?{' '}
               <a href="#partner" className="text-primary font-bold hover:underline underline-offset-4 decoration-primary/30">
                 Apply for Partnership
               </a>
             </p>
-          </div>
+          </div>}
         </motion.div>
 
         {/* Footer info */}
