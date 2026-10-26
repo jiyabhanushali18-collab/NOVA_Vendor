@@ -21,15 +21,22 @@ View your app in AI Studio: https://ai.studio/apps/50c70a86-ef8f-425a-bba2-83177
 
 ## Vendor password reset
 
-The vendor sign-in screen uses Firebase Cloud Functions and SendGrid to send a 6-digit password-reset code. Codes expire after 10 minutes, allow at most five verification attempts, and are rate-limited to one request per minute and five per hour per email address.
+The vendor sign-in screen uses Firebase Authentication's built-in `sendPasswordResetEmail(auth, email)` flow. No Cloud Functions, mail-provider credentials, or Firestore changes are required. Enable Email/Password sign-in in Firebase Authentication and configure the authorized domains in the Firebase project; Firebase sends the reset email using its configured email templates.
 
-Before deploying:
+## Customer orders and vendor sales analytics
 
-1. Use the Firebase project configured in `src/firebase.ts` and ensure it has the Blaze plan, Firebase Authentication with email/password enabled, and Cloud Firestore enabled.
-2. Verify a sender address in SendGrid, then configure the function secrets:
-   - `firebase functions:secrets:set SENDGRID_API_KEY`
-   - `firebase functions:secrets:set PASSWORD_RESET_HMAC_KEY` (use a long random value generated locally)
-3. Deploy from the repository root with `firebase deploy --only functions`. Set `PASSWORD_RESET_FROM_EMAIL` to the verified SendGrid sender when prompted.
-4. In Firestore, enable TTL deletion on the `expiresAt` field for the `passwordResetCodes`, `passwordResetLimits`, and `passwordResetIpLimits` collection groups to clean up expired codes and rate-limit records.
+Customer checkout must call the `placeCustomerOrder` callable in `us-central1` rather than writing directly to the `orders` collection. Send only product IDs and quantities; the function verifies each product against Firestore and calculates vendor IDs, images, unit prices, and totals on the server:
 
-Do not put SendGrid or HMAC secrets in frontend environment variables. Until the functions are deployed and configured, the reset workflow cannot send codes or update passwords. Requests are limited per email address and source IP; code entry is limited to five attempts.
+```ts
+const checkout = httpsCallable(getFunctions(app, 'us-central1'), 'placeCustomerOrder');
+const result = await checkout({
+  idempotencyKey: checkoutAttemptId,
+  items: cart.map(item => ({ productId: item.productId, quantity: item.quantity }))
+});
+```
+
+Create and persist `checkoutAttemptId` once when checkout starts, reuse it for retries, and clear it only after confirmation. A successful result contains `orderId`; show confirmation only after the callable resolves. The idempotency key makes repeated calls for the same checkout return the existing order instead of decrementing stock or counting sales again.
+
+The callable stores order lines in `orders/{orderId}` and the customer-to-order link in `customerOrders/{customerId}/orders/{orderId}`. Customer IDs are kept out of the vendor-readable order document. `aggregateOrderSales` maintains transaction-safe all-time and daily documents under `vendorSales/{vendorId}`. Status changes to `Cancelled` remove the order's contribution; `Failed` or unknown statuses are not counted. The vendor Analytics page listens to these documents for Today, Last 7 Days, Last 30 Days, and All Time views.
+
+Deploy the Cloud Functions and the Firestore rules together with `firebase deploy --only functions,firestore:rules`. The rules make sales aggregates read-only to clients, scope vendor reads by the authenticated vendor profile, and prevent direct customer writes to orders. To reprocess existing orders created by the trusted checkout callable, grant a trusted administrator the Firebase Auth custom claim `admin: true` and call `reindexHistoricalSales` repeatedly with the returned `nextCursor` until `complete` is true. Orders from an older client-only checkout are not treated as verified sales until their totals and ownership have been independently reconciled; missing identifiers are never inferred.

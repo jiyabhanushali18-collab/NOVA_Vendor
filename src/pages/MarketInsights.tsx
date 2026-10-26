@@ -11,11 +11,8 @@ import {
   Package, 
   AlertTriangle, 
   ArrowRight, 
-  RefreshCw, 
   Download, 
   Trash2, 
-  Key, 
-  CheckCircle, 
   Flame, 
   Info,
   Layers,
@@ -28,7 +25,6 @@ import {
   Target,
   ShieldAlert
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { Order, Product, ProfileInfo } from '../types';
 import { formatRupees, formatRupeesCompact } from '../utils/currency';
 import { 
@@ -51,12 +47,7 @@ import {
   getDeterministicBusinessInsights,
   calculateTimeSeriesTrends
 } from '../utils/marketInsightsMetrics';
-import { 
-  getGeminiApiKey, 
-  saveGeminiApiKey, 
-  generateAiMarketInsights, 
-  AiRecommendation 
-} from '../services/GeminiInsightsService';
+import { subscribeToVendorSales, type VendorSalesProduct, type VendorSalesRange } from '../services/VendorSalesService';
 
 interface MarketInsightsProps {
   orders: Order[];
@@ -72,17 +63,11 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
   const [appliedCustomRange, setAppliedCustomRange] = useState<{ startMs: number; endMs: number } | undefined>(undefined);
   const [topSortBy, setTopSortBy] = useState<'revenue' | 'unitsSold' | 'orderCount' | 'asp' | 'growth'>('revenue');
   const [events, setEvents] = useState<AnalyticsEvent[]>(() => readStoredEvents());
-  const [activeTabSection, setActiveTabSection] = useState<'overview' | 'products' | 'tryon' | 'funnel' | 'search' | 'wishlist' | 'inventory' | 'ai'>('overview');
+  const [liveSales, setLiveSales] = useState<VendorSalesProduct[]>([]);
+  const [salesLoading, setSalesLoading] = useState(true);
+  const [salesError, setSalesError] = useState('');
+  const [activeTabSection, setActiveTabSection] = useState<'overview' | 'products' | 'tryon' | 'funnel' | 'search' | 'wishlist' | 'inventory'>('overview');
   const [trendMetric, setTrendMetric] = useState<'revenue' | 'views' | 'tryOns' | 'orders' | 'wishlists'>('revenue');
-
-  // AI Insights State
-  const [aiKey, setAiKey] = useState<string>(() => getGeminiApiKey());
-  const [inputKey, setInputKey] = useState<string>('');
-  const [showKeyInput, setShowKeyInput] = useState<boolean>(false);
-  const [aiLoading, setAiLoading] = useState<boolean>(false);
-  const [aiSummary, setAiSummary] = useState<string>('');
-  const [aiRecommendations, setAiRecommendations] = useState<AiRecommendation[]>([]);
-  const [aiError, setAiError] = useState<string>('');
 
   const vendorId = profileInfo.vendorId || 'VEN001';
   const vendorProductIds = useMemo(() => new Set(products.map(p => p.id)), [products]);
@@ -110,6 +95,32 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
     };
   }, [vendorId]);
 
+  useEffect(() => {
+    const range: VendorSalesRange = selectedRange === 'Today'
+      ? 'Today'
+      : selectedRange === 'Last 7 Days'
+        ? 'Last 7 Days'
+        : selectedRange === 'All Time'
+          ? 'All Time'
+          : 'Last 30 Days';
+    setSalesLoading(true);
+    setSalesError('');
+    const unsubscribe = subscribeToVendorSales(
+      vendorId,
+      range,
+      sales => {
+        setLiveSales(sales);
+        setSalesLoading(false);
+      },
+      error => {
+        console.error('Failed to subscribe to live top-selling product analytics', error);
+        setSalesError(error.message);
+        setSalesLoading(false);
+      }
+    );
+    return unsubscribe;
+  }, [vendorId, selectedRange]);
+
   // Handle Custom Range Apply
   const handleApplyCustomRange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,6 +142,15 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
   const topSelling = useMemo(() => {
     return getTopSellingProducts(orders, products, selectedRange, topSortBy, vendorId, customRangeParam);
   }, [orders, products, selectedRange, topSortBy, vendorId, customRangeParam]);
+
+  const displayedSales = useMemo(() => [...liveSales].sort((a, b) => {
+    if (topSortBy === 'unitsSold' || topSortBy === 'growth') return b.unitsSold - a.unitsSold;
+    if (topSortBy === 'orderCount') return b.orderCount - a.orderCount;
+    if (topSortBy === 'asp') {
+      return (b.unitsSold ? b.revenue / b.unitsSold : 0) - (a.unitsSold ? a.revenue / a.unitsSold : 0);
+    }
+    return b.revenue - a.revenue;
+  }), [liveSales, topSortBy]);
 
   const mostViewed = useMemo(() => {
     return getMostViewedProducts(events, orders, products, selectedRange, vendorId, vendorProductIds, customRangeParam);
@@ -257,69 +277,6 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
     URL.revokeObjectURL(url);
   };
 
-  // Handle Gemini API Key Save
-  const handleSaveApiKey = () => {
-    if (inputKey.trim()) {
-      saveGeminiApiKey(inputKey.trim());
-      setAiKey(inputKey.trim());
-      setShowKeyInput(false);
-      setInputKey('');
-      handleTriggerAiAnalysis(inputKey.trim());
-    }
-  };
-
-  // Handle Triggering AI Recommendations
-  const handleTriggerAiAnalysis = async (explicitKey?: string) => {
-    const keyToUse = explicitKey || aiKey || getGeminiApiKey();
-    if (!keyToUse) {
-      setShowKeyInput(true);
-      return;
-    }
-
-    setAiLoading(true);
-    setAiError('');
-
-    const topCats = categoryPerformance.slice(0, 3).map(c => ({
-      name: c.category,
-      revenue: c.revenue,
-      units: c.unitsSold
-    }));
-
-    const topProds = topSelling.slice(0, 4).map(p => ({
-      name: p.name,
-      category: p.category,
-      units: p.unitsSold,
-      revenue: p.revenue,
-      stock: p.stock
-    }));
-
-    const zeroResultTerms = searchInsights.searches.filter(s => s.isZeroResult).map(s => s.term);
-    const lowStock = inventoryDemand.filter(a => a.alertType === 'stockout_risk').map(a => ({ name: a.name, stock: a.stock }));
-
-    const res = await generateAiMarketInsights({
-      vendorName: profileInfo.storeName || profileInfo.companyName || 'Fashion Fushion',
-      reportingPeriod: selectedRange,
-      totalRevenue: overview.salesRevenue.value,
-      totalOrders: overview.totalOrders.value,
-      unitsSold: overview.unitsSold.value,
-      totalViews: overview.productViews.value,
-      totalArTryOns: overview.arTryOns.value,
-      topCategories: topCats,
-      topProducts: topProds,
-      zeroResultSearches: zeroResultTerms,
-      biggestFunnelDrop: `${funnel.biggestDropOff.stageName} (${funnel.biggestDropOff.dropOffPct}% drop-off)`,
-      lowStockItems: lowStock
-    });
-
-    setAiLoading(false);
-    if (res.error) {
-      setAiError(res.error);
-    } else {
-      setAiSummary(res.summary || '');
-      setAiRecommendations(res.recommendations);
-    }
-  };
-
   // SVG Trend Path Calculation
   const trendSvg = useMemo(() => {
     const points = timeSeries.points;
@@ -407,6 +364,7 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
               <option>Today</option>
               <option>Last 7 Days</option>
               <option>Last 30 Days</option>
+              <option>All Time</option>
               <option>Last 90 Days</option>
               <option>This Month</option>
               <option>Last Month</option>
@@ -490,8 +448,7 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
           { id: 'funnel', label: 'Discovery Funnel', icon: SlidersHorizontal },
           { id: 'search', label: 'Search Demand', icon: Search },
           { id: 'wishlist', label: 'Wishlist & Engagement', icon: Heart },
-          { id: 'inventory', label: 'Inventory & Demand', icon: AlertTriangle },
-          { id: 'ai', label: 'Gemini Commercial AI', icon: Sparkles }
+          { id: 'inventory', label: 'Inventory & Demand', icon: AlertTriangle }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTabSection === tab.id;
@@ -783,7 +740,7 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div>
                   <h3 className="font-display text-lg font-bold text-slate-800">Top-Selling Clothing Items</h3>
-                  <p className="text-xs text-slate-400 font-medium">Authoritative completed order lines and verified revenues</p>
+                  <p className="text-xs text-slate-400 font-medium">Live product sales from verified Firebase orders</p>
                 </div>
                 {/* Sort controls */}
                 <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold">
@@ -799,41 +756,53 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
                 </div>
               </div>
 
-              <div className="space-y-3 mt-4">
-                {topSelling.filter(p => p.unitsSold > 0).slice(0, 6).map(prod => (
-                  <div key={prod.productId} className="flex items-center justify-between p-3 rounded-2xl bg-white/60 border border-slate-100 hover:border-primary/20 transition">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 p-0.5">
-                        <img src={prod.imageUrl} alt={prod.name} className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="text-sm font-bold text-slate-800 truncate">{prod.name}</h4>
-                          {prod.status === 'High Growth' && (
-                            <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-700 text-[9px] font-black rounded">
-                              GROWING
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded">{prod.category}</span>
-                          <span className="text-[11px] text-slate-400 font-medium">{prod.unitsSold} sold · {prod.orderCount} orders · ASP: {formatRupees(prod.asp)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0 ml-3">
-                      <div className="font-display font-extrabold text-sm text-slate-800">{formatRupees(prod.revenue)}</div>
-                      <span className="text-[10px] font-semibold text-slate-400">Stock: {prod.stock}</span>
-                    </div>
-                  </div>
-                ))}
-
-                {topSelling.filter(p => p.unitsSold > 0).length === 0 && (
-                  <div className="py-12 text-center text-slate-400 text-xs font-semibold border border-dashed border-slate-200 rounded-2xl">
-                    No confirmed clothing orders for {selectedRange.toLowerCase()}. New sales will automatically be indexed here.
-                  </div>
-                )}
-              </div>
+              {salesLoading ? (
+                <div className="py-12 text-center text-slate-400 text-xs font-semibold border border-dashed border-slate-200 rounded-2xl">
+                  Loading live sales from Firebase...
+                </div>
+              ) : salesError ? (
+                <div role="alert" className="py-8 text-center text-rose-600 text-xs font-semibold border border-dashed border-rose-200 rounded-2xl">
+                  Could not load sales analytics: {salesError}
+                </div>
+              ) : displayedSales.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs font-semibold border border-dashed border-slate-200 rounded-2xl">
+                  No sales have been indexed for {selectedRange.toLowerCase()}. New verified orders will appear here automatically.
+                </div>
+              ) : (
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full min-w-[440px] text-left">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[9px] uppercase tracking-wider text-slate-400">
+                        <th className="py-2 pr-2 font-bold">Rank</th>
+                        <th className="py-2 px-2 font-bold">Product</th>
+                        <th className="py-2 px-2 text-right font-bold">Units</th>
+                        <th className="py-2 px-2 text-right font-bold">Orders</th>
+                        <th className="py-2 pl-2 text-right font-bold">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedSales.slice(0, 6).map((prod, index) => (
+                        <tr key={prod.productId} className="border-b last:border-0 border-slate-100">
+                          <td className="py-2.5 pr-2 font-display font-extrabold text-primary">#{index + 1}</td>
+                          <td className="py-2.5 px-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                                {prod.imageUrl && (
+                                  <img src={prod.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                )}
+                              </div>
+                              <span className="text-xs font-bold text-slate-800 truncate">{prod.productName}</span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-2 text-right text-xs font-bold text-slate-700">{prod.unitsSold}</td>
+                          <td className="py-2.5 px-2 text-right text-xs font-semibold text-slate-600">{prod.orderCount}</td>
+                          <td className="py-2.5 pl-2 text-right text-xs font-extrabold text-slate-800">{formatRupees(prod.revenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1251,134 +1220,6 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
         </section>
       )}
 
-      {/* SECTION 9: AI-GENERATED MARKET INSIGHTS (GOOGLE GEMINI 2.5 FLASH) */}
-      {(activeTabSection === 'overview' || activeTabSection === 'ai') && (
-        <section className="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6 md:p-8 rounded-3xl space-y-6 shadow-xl relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-violet-500/20 text-violet-300 border border-violet-400/30">
-                <Sparkles className="w-6 h-6 animate-pulse" />
-              </div>
-              <div>
-                <h3 className="font-display text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
-                  <span>Google Gemini Commercial Intelligence</span>
-                  <span className="text-[10px] font-bold uppercase tracking-widest bg-violet-400/20 text-violet-200 px-2 py-0.5 rounded-full border border-violet-400/20">
-                    Live Model
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  AI analysis grounded strictly in verified store metrics, category revenues, and customer search trends.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => handleTriggerAiAnalysis()}
-                disabled={aiLoading}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-display text-xs font-bold shadow-md shadow-primary/30 hover:brightness-110 active:scale-95 transition cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${aiLoading ? 'animate-spin' : ''}`} />
-                <span>{aiLoading ? 'Analyzing Dataset...' : 'Generate AI Insights'}</span>
-              </button>
-
-              <button
-                onClick={() => setShowKeyInput(!showKeyInput)}
-                title="Configure Gemini API Key"
-                className="p-2.5 bg-white/10 hover:bg-white/15 rounded-xl text-slate-300 hover:text-white transition cursor-pointer border border-white/10"
-              >
-                <Key className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Inline Key Configuration Modal / Bar */}
-          {showKeyInput && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/15 space-y-3"
-            >
-              <div className="flex items-center justify-between text-xs font-bold">
-                <span className="text-violet-200">Google Gemini API Key Configuration</span>
-                <span className="text-[11px] text-slate-400">Stored safely in your browser localStorage</span>
-              </div>
-              <div className="flex gap-2">
-                <input 
-                  type="password"
-                  value={inputKey}
-                  onChange={(e) => setInputKey(e.target.value)}
-                  placeholder="Paste your Gemini API Key (e.g. AIzaSy...)"
-                  className="flex-1 bg-black/40 border border-white/20 rounded-xl px-4 py-2 text-xs text-white placeholder-slate-400 outline-none focus:border-violet-400"
-                />
-                <button
-                  onClick={handleSaveApiKey}
-                  className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs rounded-xl transition cursor-pointer"
-                >
-                  Save &amp; Analyze
-                </button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* AI Status / Error notification */}
-          {aiError && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold rounded-2xl flex items-center justify-between">
-              <span>{aiError}</span>
-              <button 
-                onClick={() => setShowKeyInput(true)} 
-                className="underline hover:text-white cursor-pointer ml-3 font-bold"
-              >
-                Enter API Key
-              </button>
-            </div>
-          )}
-
-          {/* Summary Quote */}
-          {aiSummary && (
-            <div className="bg-white/5 border border-white/10 p-4 rounded-2xl text-slate-200 text-xs leading-relaxed font-medium">
-              ✨ <strong>Commercial Assessment:</strong> {aiSummary}
-            </div>
-          )}
-
-          {/* Recommendations Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {aiRecommendations.map(rec => (
-              <div key={rec.id} className="p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-violet-400/40 transition space-y-3 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-violet-400/15 text-violet-300 border border-violet-400/20">
-                      {rec.category}
-                    </span>
-                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
-                      {rec.confidence} Confidence
-                    </span>
-                  </div>
-                  <h4 className="font-display font-extrabold text-base text-white mt-2">{rec.title}</h4>
-                  <p className="text-xs text-slate-300 font-medium leading-relaxed mt-1">{rec.observation}</p>
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-white/10 text-xs">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Evidence Metric:</span>
-                    <strong className="text-violet-300">{rec.metric}</strong>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-400/20 text-violet-200 font-bold text-[11px]">
-                    👉 Suggested Action: {rec.suggestedAction}
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {aiRecommendations.length === 0 && !aiLoading && !aiError && (
-              <div className="col-span-full py-12 text-center text-slate-400 text-xs font-semibold border border-dashed border-white/10 rounded-2xl">
-                Click <strong>"Generate AI Insights"</strong> above to run Gemini analysis on your store's sales and customer engagement data.
-              </div>
-            )}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

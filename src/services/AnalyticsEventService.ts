@@ -3,8 +3,8 @@ import {
   addDoc, 
   onSnapshot, 
   query, 
-  orderBy, 
   limit, 
+  where,
   type Unsubscribe 
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -315,7 +315,7 @@ export const subscribeToAnalyticsEvents = (
   // 2. Setup Firestore listener
   try {
     const colRef = collection(db, 'analytics_events');
-    const q = query(colRef, orderBy('createdAt', 'desc'), limit(1200));
+    const q = query(colRef, where('vendorId', '==', vendorId || 'VEN001'), limit(1200));
 
     const unsubscribe = onSnapshot(
       q,

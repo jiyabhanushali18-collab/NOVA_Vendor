@@ -422,20 +422,44 @@ export const getTopSellingProducts = (
 ): TopProductPerformance[] => {
   const { currentOrders, previousOrders } = filterOrdersByRange(orders, range, vendorId, customRange);
 
-  // Group current period by product name
+  const findProduct = (productId?: string, productName?: string) => {
+    if (productId) {
+      const byId = products.find(product => product.id === productId);
+      if (byId) return byId;
+    }
+    const normalizedName = productName?.trim().toLowerCase();
+    return normalizedName
+      ? products.find(product => product.name.trim().toLowerCase() === normalizedName)
+      : undefined;
+  };
+
+  // Group current period by product identity, falling back to name for older order records.
   const curProductMap: Record<string, { units: number; grossSales: number; netSales: number; orderCount: number }> = {};
   for (const o of currentOrders) {
     if (o.status !== 'Cancelled') {
-      const key = o.productName.trim().toLowerCase();
-      if (!curProductMap[key]) {
-        curProductMap[key] = { units: 0, grossSales: 0, netSales: 0, orderCount: 0 };
+      const lineItems = o.items?.length
+        ? o.items
+        : [{ productId: o.productId, productName: o.productName, quantity: o.quantity, amount: o.amount }];
+      const productsInOrder = new Set<string>();
+      for (const line of lineItems) {
+        const product = findProduct(line.productId, line.productName);
+        if (!product) continue;
+
+        const key = product.id;
+        if (!curProductMap[key]) {
+          curProductMap[key] = { units: 0, grossSales: 0, netSales: 0, orderCount: 0 };
+        }
+        const lineAmount = line.amount || product.price * line.quantity;
+        curProductMap[key].units += line.quantity;
+        curProductMap[key].grossSales += lineAmount;
+        if (o.status === 'Delivered' || o.status === 'Shipped') {
+          curProductMap[key].netSales += lineAmount;
+        }
+        productsInOrder.add(key);
       }
-      curProductMap[key].units += o.quantity;
-      curProductMap[key].grossSales += o.amount;
-      if (o.status === 'Delivered' || o.status === 'Shipped') {
-        curProductMap[key].netSales += o.amount;
+      for (const key of productsInOrder) {
+        curProductMap[key].orderCount += 1;
       }
-      curProductMap[key].orderCount += 1;
     }
   }
 
@@ -443,13 +467,20 @@ export const getTopSellingProducts = (
   const prevProductUnits: Record<string, number> = {};
   for (const o of previousOrders) {
     if (o.status !== 'Cancelled') {
-      const key = o.productName.trim().toLowerCase();
-      prevProductUnits[key] = (prevProductUnits[key] || 0) + o.quantity;
+      const lineItems = o.items?.length
+        ? o.items
+        : [{ productId: o.productId, productName: o.productName, quantity: o.quantity, amount: o.amount }];
+      for (const line of lineItems) {
+        const product = findProduct(line.productId, line.productName);
+        if (product) {
+          prevProductUnits[product.id] = (prevProductUnits[product.id] || 0) + line.quantity;
+        }
+      }
     }
   }
 
   const items: TopProductPerformance[] = products.map(p => {
-    const key = p.name.trim().toLowerCase();
+    const key = p.id;
     const stats = curProductMap[key] || { units: 0, grossSales: 0, netSales: 0, orderCount: 0 };
     const prevUnits = prevProductUnits[key] || 0;
 

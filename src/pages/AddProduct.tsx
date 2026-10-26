@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Info, 
   Image as ImageIcon, 
@@ -27,7 +27,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   // Input fields status
   const [name, setName] = useState(editingProduct?.name || '');
   const [brand, setBrand] = useState(editingProduct?.brand || '');
-  const [category, setCategory] = useState(editingProduct ? (editingProduct.category || 'Uncategorized') : 'T-Shirts');
+  const [category, setCategory] = useState(editingProduct?.category || '');
   const fallbackColor = editingProduct?.color || '';
   const [description, setDescription] = useState(editingProduct?.description || '');
   const [price, setPrice] = useState<number>(editingProduct?.price || 0);
@@ -45,7 +45,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
   const [careInstructions, setCareInstructions] = useState(editingProduct?.careInstructions || '');
   const [tags, setTags] = useState<string[]>(() => editingProduct?.tags?.slice() || []);
   const [tagInput, setTagInput] = useState('');
-  const [gender, setGender] = useState(editingProduct?.gender || 'Unisex');
+  const [gender, setGender] = useState(editingProduct?.gender || '');
   const [variants, setVariants] = useState<ProductVariant[]>(() => {
     if (editingProduct?.variants && editingProduct.variants.length) {
       return editingProduct.variants.map(variant => ({
@@ -68,6 +68,7 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const submissionInProgress = useRef(false);
 
   // face-shape compatibility removed for clothing / AR try-on
 
@@ -208,8 +209,23 @@ export default function AddProduct({ onAddProduct, setActiveTab, editingProduct,
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submissionInProgress.current || success) return;
     if (!name || !brand) {
       alert("Please fill in the Product Name and Brand fields.");
+      return;
+    }
+    if (!category || !fabric || !gender) {
+      alert('Please select a category, fabric, and gender before saving.');
+      return;
+    }
+    if (
+      originalPrice === ''
+      || originalPrice <= 0
+      || discountedPrice === ''
+      || discountedPrice <= 0
+      || price <= 0
+    ) {
+      alert('Enter a valid amount greater than zero for Original Price, Discounted / Sale Price, and Retail Price.');
       return;
     }
 
@@ -233,6 +249,7 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
       }
     }
 
+    submissionInProgress.current = true;
     setSaving(true);
 
     try {
@@ -317,6 +334,7 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
       const message = err instanceof Error ? err.message : 'Unknown Firebase error';
       alert(`Unable to save product: ${message}`);
       setSaving(false);
+      submissionInProgress.current = false;
     }
   };
 
@@ -355,12 +373,15 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">CATEGORY</label>
+              <label htmlFor="product-category" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">CATEGORY <span className="text-rose-500">*</span></label>
               <select
+                id="product-category"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
+                required
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
               >
+                <option value="">Select category</option>
                 <option>T-Shirts</option>
                 <option>Shirts</option>
                 <option>Polo T-Shirts</option>
@@ -402,12 +423,16 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
             </div>
             
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Original Price (optional)</label>
+              <label htmlFor="originalPrice" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Original Price <span className="text-rose-500">*</span></label>
               <div className="relative group">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 transition-colors">₹</span>
                 <input 
+                  id="originalPrice"
                   type="number"
-                  value={originalPrice as any || ''}
+                  min="0.01"
+                  step="0.01"
+                  required
+                  value={originalPrice === '' ? '' : originalPrice}
                   onChange={e => setOriginalPrice(e.target.value ? Number(e.target.value) : '')}
                   placeholder="e.g. 5999"
                   className="bg-white/40 border border-primary/20 rounded-xl pl-8 pr-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 w-full"
@@ -416,12 +441,16 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Discounted / Sale Price (optional)</label>
+              <label htmlFor="discountedPrice" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Discounted / Sale Price <span className="text-rose-500">*</span></label>
               <div className="relative group">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 transition-colors">₹</span>
                 <input 
+                  id="discountedPrice"
                   type="number"
-                  value={discountedPrice as any || ''}
+                  min="0.01"
+                  step="0.01"
+                  required
+                  value={discountedPrice === '' ? '' : discountedPrice}
                   onChange={e => setDiscountedPrice(e.target.value ? Number(e.target.value) : '')}
                   placeholder="e.g. 4999"
                   className="bg-white/40 border border-primary/20 rounded-xl pl-8 pr-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 w-full"
@@ -430,11 +459,15 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Retail Price (INR)</label>
+              <label htmlFor="retailPrice" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Retail Price (INR) <span className="text-rose-500">*</span></label>
               <div className="relative group">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 group-focus-within:text-primary transition-colors">₹</span>
                 <input 
+                  id="retailPrice"
                   type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
                   value={price || ''}
                   onChange={e => setPrice(Number(e.target.value))}
                   placeholder="0.00"
@@ -483,10 +516,12 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">FABRIC</label>
+              <label htmlFor="product-fabric" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">FABRIC <span className="text-rose-500">*</span></label>
               <select
+                id="product-fabric"
                 value={fabric}
                 onChange={e => setFabric(e.target.value)}
+                required
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
               >
                 <option value="">Select fabric</option>
@@ -525,12 +560,15 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
               </select>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">GENDER</label>
+              <label htmlFor="product-gender" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">GENDER <span className="text-rose-500">*</span></label>
               <select
+                id="product-gender"
                 value={gender}
                 onChange={e => setGender(e.target.value)}
+                required
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 cursor-pointer"
               >
+                <option value="">Select gender</option>
                 <option>Unisex</option>
                 <option>Men</option>
                 <option>Women</option>

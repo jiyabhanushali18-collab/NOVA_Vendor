@@ -11,8 +11,14 @@ import {
   Lock,
   Sparkles
 } from 'lucide-react';
+import ThemeToggle from '../components/ThemeToggle';
 
-export default function Settings() {
+interface SettingsProps {
+  darkMode: boolean;
+  onToggleDarkMode: () => void;
+}
+
+export default function Settings({ darkMode, onToggleDarkMode }: SettingsProps) {
   const [copied, setCopied] = useState(false);
   const [showKey, setShowKey] = useState(false);
   
@@ -160,20 +166,18 @@ export default function Settings() {
         <GeminiSettingsCard />
       </div>
 
-      {/* Theme Preference Note - Exquisite Slate defaults */}
+      {/* Theme preference */}
       <div className="bg-white/65 hover:bg-white border border-slate-250 p-6 rounded-2xl flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Sliders className="w-5 h-5 text-primary shrink-0" />
           <div>
-            <h4 className="font-display text-sm font-bold text-slate-800">Slate Calibration Theme</h4>
+            <h4 className="font-display text-sm font-bold text-slate-800">Appearance</h4>
             <p className="text-[11px] text-slate-450 leading-relaxed font-medium mt-0.5">
-              NOVA uses the highly-contrastive Slate Theme specifically designed to neutralize strain under standard fluorescent screens.
+              Choose a light or dark theme. Your preference is saved on this device.
             </p>
           </div>
         </div>
-        <span className="text-[10px] uppercase font-black text-primary bg-primary/5 px-3 py-1 rounded-full shrink-0 select-none border border-primary/10">
-          ACTIVE
-        </span>
+        <ThemeToggle darkMode={darkMode} onToggle={onToggleDarkMode} />
       </div>
 
     </div>

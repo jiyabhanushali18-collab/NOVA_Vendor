@@ -5,16 +5,13 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword
 } from 'firebase/auth';
 import { auth } from '../firebase';
-import {
-  requestVendorPasswordReset,
-  resetVendorPassword,
-  verifyVendorPasswordResetCode
-} from '../services/PasswordResetService';
 import { ProfileInfo } from '../types';
+import ThemeToggle from '../components/ThemeToggle';
 import {
   createVendorProfile,
   getLocalVendorProfile,
@@ -26,6 +23,8 @@ interface LoginProps {
   onLoginSuccess: (email: string, profile?: ProfileInfo) => void;
   authProfileError?: string;
   onSwitchAccount: () => Promise<void>;
+  darkMode: boolean;
+  onToggleDarkMode: () => void;
 }
 
 type VendorSignupDetails = VendorSignupData & { vendorId: string };
@@ -67,34 +66,33 @@ const getAuthErrorMessage = (err: unknown) => {
 
 const getPasswordResetErrorMessage = (err: unknown) => {
   const code = getAuthErrorCode(err);
-  const message = err instanceof Error ? err.message : '';
 
   switch (code) {
-    case 'functions/not-found':
-      return 'The password reset service is not deployed yet. Ask your administrator to deploy the Firebase Functions.';
-    case 'functions/internal':
-    case 'internal':
-      return 'The password reset service is unavailable. Check that Firebase Functions are deployed and SendGrid is configured.';
-    case 'functions/unavailable':
-    case 'functions/deadline-exceeded':
-      return 'The password reset service could not be reached. Please try again later.';
-    case 'functions/resource-exhausted':
-      return message || 'Too many requests. Please wait before trying again.';
+    case 'auth/invalid-email':
+      return 'Enter a valid email address.';
+    case 'auth/user-not-found':
+    case 'auth/invalid-credential':
+      return 'If an account exists for this email, a password reset link will be sent.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a while before trying again.';
+    case 'auth/network-request-failed':
+      return 'Firebase could not be reached. Check your connection and try again.';
+    case 'auth/operation-not-allowed':
+    case 'auth/configuration-not-found':
+      return 'Password reset is unavailable because Firebase Email/Password authentication is not enabled for this project.';
+    case 'auth/unauthorized-domain':
+    case 'auth/app-not-authorized':
+      return 'This app domain is not authorized in Firebase Authentication.';
     default:
-      return message || 'Password reset failed. Please try again.';
+      return 'Could not send the password reset email. Please try again later.';
   }
 };
 
-export default function Login({ onLoginSuccess, authProfileError, onSwitchAccount }: LoginProps) {
+export default function Login({ onLoginSuccess, authProfileError, onSwitchAccount, darkMode, onToggleDarkMode }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
-  const [forgotStep, setForgotStep] = useState<'email' | 'code' | 'password'>('email');
-  const [resetCode, setResetCode] = useState('');
-  const [resetChallenge, setResetChallenge] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [resetMessage, setResetMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -140,37 +138,11 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
     setError('');
 
     if (mode === 'forgot') {
+      setResetMessage('');
       setIsLoading(true);
       try {
-        const userEmail = email.trim().toLowerCase();
-        if (forgotStep === 'email') {
-          await requestVendorPasswordReset(userEmail);
-          setForgotStep('code');
-          setResetMessage('If an account exists for this address, a verification code has been sent.');
-        } else if (forgotStep === 'code') {
-          const { challengeToken } = await verifyVendorPasswordResetCode(userEmail, resetCode);
-          setResetChallenge(challengeToken);
-          setForgotStep('password');
-          setResetMessage('');
-        } else {
-          if (newPassword.length < 6) {
-            setError('Use a password with at least 6 characters.');
-            return;
-          }
-          if (newPassword !== confirmNewPassword) {
-            setError('Passwords do not match.');
-            return;
-          }
-          await resetVendorPassword(userEmail, resetChallenge, newPassword);
-          setMode('login');
-          setPassword('');
-          setResetCode('');
-          setNewPassword('');
-          setConfirmNewPassword('');
-          setResetChallenge('');
-          setForgotStep('email');
-          setResetMessage('Your password has been reset. Sign in with your new password.');
-        }
+        await sendPasswordResetEmail(auth, email.trim());
+        setResetMessage('If an account exists for this email, a password reset link has been sent. Please check your inbox.');
       } catch (err) {
         setError(getPasswordResetErrorMessage(err));
       } finally {
@@ -190,6 +162,11 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
 
       if (missingVendorField) {
         setError('Please fill in all vendor credentials.');
+        return;
+      }
+
+      if (!/^\d{10}$/.test(vendorDetails.phoneNumber)) {
+        setError('Enter a valid 10-digit phone number.');
         return;
       }
     }
@@ -263,6 +240,9 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 md:p-10 font-body select-none relative overflow-hidden bg-slate-50">
+      <div className="absolute right-5 top-5 z-20">
+        <ThemeToggle darkMode={darkMode} onToggle={onToggleDarkMode} />
+      </div>
       {/* Dynamic Background Orbs */}
       <div className="absolute w-[400px] h-[400px] rounded-full bg-secondary-fixed filter blur-[80px] opacity-40 top-[-10%] left-[-10%] animate-pulse pointer-events-none" style={{ animationDuration: '8s' }} />
       <div className="absolute w-[300px] h-[300px] rounded-full bg-primary-fixed filter blur-[80px] opacity-40 bottom-[-5%] right-[-5%] animate-pulse pointer-events-none" style={{ animationDuration: '10s' }} />
@@ -292,11 +272,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
             </h2>
             <p className="text-slate-400 font-medium text-sm mt-1">
               {mode === 'forgot'
-                ? forgotStep === 'email'
-                  ? 'Reset your vendor account password'
-                  : forgotStep === 'code'
-                    ? 'Enter the verification code sent to your email'
-                    : 'Choose a new password for your account'
+                ? 'Enter your account email and we will send a password reset link'
                 : mode === 'login'
                   ? 'Sign in to manage your product catalog'
                   : 'Create an account to manage your product catalog'}
@@ -319,77 +295,17 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="vendor@example.com"
                       required
-                      readOnly={forgotStep !== 'email'}
-                      className="w-full h-14 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none read-only:opacity-70"
+                      autoComplete="email"
+                      className="w-full h-14 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
                     />
                   </div>
                 </div>
-
-                {forgotStep === 'code' && (
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="resetCode" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      6-digit verification code
-                    </label>
-                    <input
-                      id="resetCode"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      pattern="[0-9]{6}"
-                      maxLength={6}
-                      value={resetCode}
-                      onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="••••••"
-                      required
-                      className="w-full h-14 px-4 rounded-xl border border-primary/25 bg-white/40 text-center text-2xl font-semibold tracking-[0.5em] text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
-                    />
-                    <p className="text-xs text-slate-400">Enter the code sent to your registered email.</p>
-                  </div>
-                )}
-
-                {forgotStep === 'password' && (
-                  <>
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="newPassword" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
-                        New password
-                      </label>
-                      <input
-                        id="newPassword"
-                        type="password"
-                        autoComplete="new-password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="At least 6 characters"
-                        minLength={6}
-                        required
-                        className="w-full h-14 px-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="confirmNewPassword" className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">
-                        Confirm new password
-                      </label>
-                      <input
-                        id="confirmNewPassword"
-                        type="password"
-                        autoComplete="new-password"
-                        value={confirmNewPassword}
-                        onChange={(e) => setConfirmNewPassword(e.target.value)}
-                        placeholder="Enter your new password again"
-                        minLength={6}
-                        required
-                        className="w-full h-14 px-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
-                      />
-                    </div>
-                  </>
-                )}
 
                 <div className="flex items-center justify-between text-sm">
                   <button
                     type="button"
                     onClick={() => {
                       setMode('login');
-                      setForgotStep('email');
                       setResetMessage('');
                       setError('');
                     }}
@@ -397,19 +313,6 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                   >
                     Back to login
                   </button>
-                  {forgotStep === 'code' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForgotStep('email');
-                        setResetMessage('');
-                        setError('');
-                      }}
-                      className="font-semibold text-slate-500 hover:underline"
-                    >
-                      Change email
-                    </button>
-                  )}
                 </div>
               </>
             ) : (
@@ -457,7 +360,6 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                     type="button"
                     onClick={() => {
                       setMode('forgot');
-                      setForgotStep('email');
                       setResetMessage('');
                       setError('');
                     }}
@@ -605,12 +507,19 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                       id="phoneNumber"
                       type="tel"
                       value={vendorDetails.phoneNumber}
-                      onChange={(e) => updateVendorDetails('phoneNumber', e.target.value)}
+                      onChange={(e) => updateVendorDetails('phoneNumber', e.target.value.replace(/\D/g, '').slice(0, 10))}
                       placeholder="9876543210"
+                      inputMode="numeric"
+                      maxLength={10}
+                      pattern="[0-9]{10}"
                       required
+                      aria-describedby="phoneNumber-hint"
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
                     />
                   </div>
+                  <p id="phoneNumber-hint" className="text-xs font-medium text-slate-500">
+                    Enter a 10-digit mobile number.
+                  </p>
                 </div>
 
                 <div className="flex flex-col gap-2 sm:col-span-2">
@@ -671,11 +580,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                 <>
                   <span>
                     {mode === 'forgot'
-                      ? forgotStep === 'email'
-                        ? 'Send verification code'
-                        : forgotStep === 'code'
-                          ? 'Verify code'
-                          : 'Reset Password'
+                      ? 'Send reset email'
                       : mode === 'login'
                         ? 'Login to Portal'
                         : 'Create Account'}

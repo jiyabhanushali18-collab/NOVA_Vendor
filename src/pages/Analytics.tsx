@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -12,17 +12,55 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRupees, formatRupeesCompact } from '../utils/currency';
 import { Order, Product } from '../types';
+import { subscribeToVendorSales, type VendorSalesProduct, type VendorSalesRange } from '../services/VendorSalesService';
 
 interface AnalyticsProps {
   orders: Order[];
   products: Product[];
+  vendorId?: string;
 }
 
-export default function Analytics({ orders, products }: AnalyticsProps) {
+export default function Analytics({ orders, products, vendorId = '' }: AnalyticsProps) {
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [salesRange, setSalesRange] = useState<VendorSalesRange>('Last 30 Days');
+  const [topSellingProducts, setTopSellingProducts] = useState<VendorSalesProduct[]>([]);
+  const [salesLoading, setSalesLoading] = useState(true);
+  const [salesError, setSalesError] = useState('');
+  const formatRank = (rank: number) => {
+    const lastTwoDigits = rank % 100;
+    const suffix = lastTwoDigits >= 11 && lastTwoDigits <= 13
+      ? 'th'
+      : rank % 10 === 1
+        ? 'st'
+        : rank % 10 === 2
+          ? 'nd'
+          : rank % 10 === 3
+            ? 'rd'
+            : 'th';
+    return `${rank}${suffix}`;
+  };
+
+  useEffect(() => {
+    setSalesLoading(true);
+    setSalesError('');
+    const unsubscribe = subscribeToVendorSales(
+      vendorId,
+      salesRange,
+      updatedSales => {
+        setTopSellingProducts(updatedSales);
+        setSalesLoading(false);
+      },
+      error => {
+        console.error('Failed to subscribe to vendor sales analytics', error);
+        setSalesError(error.message);
+        setSalesLoading(false);
+      }
+    );
+    return unsubscribe;
+  }, [vendorId, salesRange]);
 
   // Consistent earned revenue definition: Delivered or Shipped orders
   const earnedOrders = useMemo(() => {
@@ -142,12 +180,110 @@ export default function Analytics({ orders, products }: AnalyticsProps) {
     return items;
   }, [products]);
 
+  const getExportRows = (): unknown[][] => [
+    ['Report', 'NOVA Vendor Analytics'],
+    ['Generated at', new Date().toLocaleString()],
+    ['Vendor ID', vendorId],
+    [],
+    ['Products'],
+    ['Product ID', 'Product', 'Brand', 'Category', 'SKU', 'Price', 'Stock', 'Status', 'Vendor'],
+    ...products.map(product => [
+      product.id,
+      product.name,
+      product.brand,
+      product.category,
+      product.sku || '',
+      product.price,
+      product.stock,
+      product.status,
+      product.vendorName || ''
+    ]),
+    [],
+    ['Orders'],
+    ['Order ID', 'Date', 'Customer', 'Product', 'Quantity', 'Amount', 'Status'],
+    ...orders.map(order => [
+      order.id,
+      order.date,
+      order.customerName,
+      order.productName,
+      order.quantity,
+      order.amount,
+      order.status
+    ])
+  ];
+
   const handleExport = () => {
-    setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
+    setExportError('');
+    try {
+      const csv = getExportRows()
+        .map(row => row.map(value => {
+          const cell = String(value ?? '');
+          const safeCell = /^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell;
+          return `"${safeCell.replace(/"/g, '""')}"`;
+        }).join(','))
+        .join('\r\n');
+      const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const date = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `nova-vendor-analytics-${date}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setShowExportModal(true);
-    }, 1500);
+    } catch (error) {
+      console.error('Failed to export analytics report', error);
+      setExportError('Could not create the report. Please try again.');
+    }
+  };
+
+  const handlePrintReport = () => {
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) {
+      setExportError('The PDF window was blocked. Allow pop-ups for this site and try again.');
+      return;
+    }
+
+    const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, character => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[character] || character);
+    const table = (title: string, headers: string[], rows: unknown[][]) => `
+      <h2>${escapeHtml(title)}</h2>
+      <table>
+        <thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.length
+          ? rows.map(row => `<tr>${row.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')
+          : `<tr><td colspan="${headers.length}">No data available.</td></tr>`}</tbody>
+      </table>`;
+    const reportDate = new Date().toLocaleString();
+
+    reportWindow.document.write(`<!doctype html>
+      <html><head><title>NOVA Vendor Analytics</title>
+      <style>
+        body{font:14px Arial,sans-serif;color:#172033;margin:32px}
+        h1{margin-bottom:4px}p{color:#64748b;margin-top:0}
+        h2{margin-top:28px;font-size:18px}
+        table{border-collapse:collapse;width:100%;font-size:12px}
+        th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}
+        th{background:#f1f5f9}
+        @media print{body{margin:12mm}}
+      </style></head><body>
+      <h1>NOVA Vendor Analytics</h1>
+      <p>Vendor ID: ${escapeHtml(vendorId)} · Generated: ${escapeHtml(reportDate)}</p>
+      ${table('Products', ['Product ID', 'Product', 'Brand', 'Category', 'SKU', 'Price', 'Stock', 'Status', 'Vendor'],
+        products.map(product => [product.id, product.name, product.brand, product.category, product.sku || '', product.price, product.stock, product.status, product.vendorName || '']))}
+      ${table('Orders', ['Order ID', 'Date', 'Customer', 'Product', 'Quantity', 'Amount', 'Status'],
+        orders.map(order => [order.id, order.date, order.customerName, order.productName, order.quantity, order.amount, order.status]))}
+      </body></html>`);
+    reportWindow.document.close();
+    reportWindow.focus();
+    reportWindow.print();
   };
 
   return (
@@ -170,23 +306,86 @@ export default function Analytics({ orders, products }: AnalyticsProps) {
           
           <button 
             onClick={handleExport}
-            disabled={isExporting}
             className="bg-gradient-to-r from-primary to-secondary px-5 py-2.5 rounded-xl font-display text-sm font-bold text-white flex items-center gap-2 transition-all hover:scale-[1.02] shadow-md shadow-primary/20 cursor-pointer min-w-[155px] justify-center"
           >
-            {isExporting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Exporting...</span>
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4" />
-                <span>Export Report</span>
-              </>
-            )}
+            <Download className="w-4 h-4" />
+            <span>Export Report</span>
           </button>
         </div>
       </div>
+
+      <section className="bg-white/70 backdrop-blur-md border border-slate-200/50 p-5 md:p-6 rounded-3xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+          <div>
+            <h3 className="font-display text-lg font-bold text-slate-800">Top Selling Products</h3>
+            <p className="text-xs text-slate-400 font-medium mt-1">Live sales totals from confirmed customer orders</p>
+          </div>
+          <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
+            {(['Today', 'Last 7 Days', 'Last 30 Days', 'All Time'] as const).map(range => (
+              <button
+                key={range}
+                type="button"
+                onClick={() => setSalesRange(range)}
+                aria-pressed={salesRange === range}
+                className={`px-3 py-2 rounded-lg transition cursor-pointer ${salesRange === range ? 'bg-white shadow text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                {range}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {salesLoading ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm font-semibold text-slate-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading live sales...
+          </div>
+        ) : salesError ? (
+          <div role="alert" className="py-8 text-center text-sm font-semibold text-rose-600">
+            Could not load sales analytics: {salesError}
+          </div>
+        ) : topSellingProducts.length === 0 ? (
+          <div className="py-10 text-center text-sm font-semibold text-slate-400 border border-dashed border-slate-200 rounded-2xl">
+            No eligible product sales found for {salesRange.toLowerCase()}.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-left">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                  <th className="py-3 px-2 font-bold">Rank</th>
+                  <th className="py-3 px-2 font-bold">Product</th>
+                  <th className="py-3 px-2 font-bold text-right">Units sold</th>
+                  <th className="py-3 px-2 font-bold text-right">Orders</th>
+                  <th className="py-3 px-2 font-bold text-right">Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topSellingProducts.map((product, index) => (
+                  <tr key={product.productId} className="border-b last:border-0 border-slate-100">
+                    <td className="py-3 px-2 font-display font-extrabold text-primary">{formatRank(index + 1)}</td>
+                    <td className="py-3 px-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                          {product.imageUrl ? (
+                            <img src={product.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center"><Package className="w-4 h-4 text-slate-400" /></div>
+                          )}
+                        </div>
+                        <span className="font-bold text-sm text-slate-800 truncate">{product.productName}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-2 text-right font-bold text-slate-700">{product.unitsSold}</td>
+                    <td className="py-3 px-2 text-right font-semibold text-slate-600">{product.orderCount}</td>
+                    <td className="py-3 px-2 text-right font-display font-extrabold text-slate-800">{formatRupees(product.revenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* Stats Bento Grid */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -451,14 +650,24 @@ export default function Analytics({ orders, products }: AnalyticsProps) {
               </svg>
             </div>
             <h3 className="font-display text-lg font-bold text-slate-800">
-              Report Generated Successfully
+              CSV Report Downloaded
             </h3>
             <p className="text-sm text-slate-500 max-w-[320px] mx-auto leading-relaxed">
-              Your comprehensive product performance spreadsheet (PDF &amp; CSV formats) has been assembled and is ready for download in your connected network logs directory.
+              Your products and orders report has been downloaded as a CSV file. You can also print or save a formatted copy as a PDF.
             </p>
+            {exportError && <p role="alert" className="text-sm font-medium text-rose-600">{exportError}</p>}
             <button 
-              onClick={() => setShowExportModal(false)}
-              className="mt-4 w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all shadow-md"
+              onClick={handlePrintReport}
+              className="mt-4 w-full py-3 bg-gradient-to-r from-primary to-secondary text-white font-bold rounded-xl transition-all shadow-md"
+            >
+              Print / Save as PDF
+            </button>
+            <button
+              onClick={() => {
+                setShowExportModal(false);
+                setExportError('');
+              }}
+              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all shadow-md"
             >
               Close
             </button>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Package, 
   Search, 
@@ -10,7 +10,7 @@ import {
   ChevronLeft, 
   ChevronRight
 } from 'lucide-react';
-import { Product, ProfileInfo } from '../types';
+import { Product, ProfileInfo, ProductFilters } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRupees } from '../utils/currency';
 import { trackProductView, trackProductSearch } from '../services/AnalyticsEventService';
@@ -23,6 +23,8 @@ interface ProductsProps {
   setActiveTab: (tab: string) => void;
   onEditProduct?: (product: Product) => void;
   onDeleteProduct?: (productId: string) => Promise<void>;
+  selectedVendor?: string;
+  initialFilters?: ProductFilters;
 }
 
 const ALL_CLOTHING_CATEGORIES = [
@@ -42,12 +44,20 @@ const ALL_CLOTHING_CATEGORIES = [
   'Accessories'
 ];
 
-export default function Products({ products, profileInfo, isLoading = false, setProducts, setActiveTab, onEditProduct, onDeleteProduct }: ProductsProps) {
-  const [selectedCategory, setSelectedCategory] = useState('All Categories');
-  const [selectedStatus, setSelectedStatus] = useState('Status: All');
-  const [searchQuery, setSearchQuery] = useState('');
+export default function Products({ products, profileInfo, isLoading = false, setProducts, setActiveTab, onEditProduct, onDeleteProduct, selectedVendor = '', initialFilters }: ProductsProps) {
+  const [selectedCategory, setSelectedCategory] = useState(initialFilters?.category || 'All Categories');
+  const [selectedStatus, setSelectedStatus] = useState(initialFilters?.status || 'Status: All');
+  const [searchQuery, setSearchQuery] = useState(initialFilters?.search || '');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
+
+  useEffect(() => {
+    if (!initialFilters) return;
+    setSelectedCategory(initialFilters.category);
+    setSelectedStatus(initialFilters.status);
+    setSearchQuery(initialFilters.search);
+    setCurrentPage(1);
+  }, [initialFilters]);
 
   // Dynamically compile categories present in products plus standard clothing categories
   const categoryOptions = useMemo(() => {
@@ -89,10 +99,15 @@ export default function Products({ products, profileInfo, isLoading = false, set
     // Vendor store check
     const vendorStoreId = profileInfo?.vendorId?.trim();
     const vendorStoreName = (profileInfo?.companyName || profileInfo?.storeName || '').trim().toLowerCase();
-    const matchesStore =
-      !vendorStoreId && !vendorStoreName ||
-      (vendorStoreId ? product.vendorId === vendorStoreId : false) ||
-      (vendorStoreName ? product.vendorName?.trim().toLowerCase() === vendorStoreName : false);
+    const selectedVendorName = selectedVendor.trim().toLowerCase();
+    const matchesSelectedVendor = selectedVendor === 'all'
+      || product.vendorName?.trim().toLowerCase() === selectedVendorName
+      || (!product.vendorName?.trim() && vendorStoreName === selectedVendorName);
+    const matchesStore = selectedVendor
+      ? matchesSelectedVendor
+      : !vendorStoreId && !vendorStoreName ||
+        (vendorStoreId ? product.vendorId === vendorStoreId : false) ||
+        (vendorStoreName ? product.vendorName?.trim().toLowerCase() === vendorStoreName : false);
 
     return matchesCategory && matchesStatus && matchesSearch && matchesStore;
   });

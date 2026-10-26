@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { initialActivities, initialProfile } from './store';
-import { Product, Order, Activity, ProfileInfo } from './types';
+import { Product, Order, Activity, ProfileInfo, ProductFilters } from './types';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
@@ -285,8 +285,32 @@ const removeUndefinedFields = <T,>(value: T): T => {
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authProfileError, setAuthProfileError] = useState('');
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return window.localStorage.getItem('nova-vendor-theme') === 'dark';
+    } catch {
+      return false;
+    }
+  });
   const [activeTab, setActiveTab] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedProductVendor, setSelectedProductVendor] = useState('');
+  const [dashboardProductFilters, setDashboardProductFilters] = useState<ProductFilters>({
+    category: 'All Categories',
+    status: 'Status: All',
+    search: '',
+    vendor: 'all'
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    try {
+      window.localStorage.setItem('nova-vendor-theme', darkMode ? 'dark' : 'light');
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn('Could not save theme preference', error);
+    }
+  }, [darkMode]);
 
   useEffect(() => {
     window.localStorage.removeItem('nova-local-auth-users');
@@ -373,9 +397,11 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersError, setOrdersError] = useState('');
   const [activities, setActivities] = useState<Activity[]>(initialActivities);
   const [profileInfo, setProfileInfo] = useState<ProfileInfo>(initialProfile);
   const pendingProductsRef = useRef<Product[]>([]);
+  const addingProductRef = useRef(false);
 
   const matchesCurrentStore = (product: Product) => {
     const currentVendorId = profileInfo.vendorId?.trim();
@@ -441,25 +467,53 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn) {
       setOrders([]);
+      setOrdersError('');
       return;
     }
 
+    const currentVendorId = profileInfo.vendorId?.trim();
+    if (!currentVendorId) {
+      setOrders([]);
+      setOrdersError('Your vendor profile is missing a vendor ID, so customer orders cannot be matched to your store.');
+      return;
+    }
+
+    setOrdersError('');
     const unsubscribe = subscribeToOrders(
+      currentVendorId,
       firestoreOrders => {
         const vendorId = profileInfo.vendorId?.trim();
         const vendorName = (profileInfo.companyName || profileInfo.storeName || '').trim().toLowerCase();
-        setOrders(firestoreOrders.filter(order =>
+        setOrders(firestoreOrders.map(order => {
+          const orderProductName = order.productName.trim().toLowerCase();
+          const matchingProduct = products.find(product =>
+            (order.productId && product.id === order.productId)
+            || product.name.trim().toLowerCase() === orderProductName
+            || order.items?.some(item =>
+              (item.productId && product.id === item.productId)
+              || product.name.trim().toLowerCase() === item.productName.trim().toLowerCase()
+            )
+          );
+          return {
+            ...order,
+            vendorId: order.vendorId || matchingProduct?.vendorId || (!order.vendorName ? vendorId : undefined),
+            vendorName: order.vendorName || matchingProduct?.vendorName || (!order.vendorId ? vendorName : undefined)
+          };
+        }).filter(order =>
           !order.vendorId && !order.vendorName
             ? true
             : (vendorId && order.vendorId === vendorId)
               || (vendorName && order.vendorName?.trim().toLowerCase() === vendorName)
         ));
       },
-      error => console.error('Failed to subscribe to orders from Firestore', error)
+      error => {
+        console.error('Failed to subscribe to vendor customer orders from Firestore', error);
+        setOrdersError(`Could not load customer orders from Firebase: ${error.message}`);
+      }
     );
 
     return unsubscribe;
-  }, [isLoggedIn, profileInfo]);
+  }, [isLoggedIn, profileInfo, products]);
 
   // Realtime reviews listener — keeps product ratings & reviews in sync
   useEffect(() => {
@@ -555,9 +609,90 @@ export default function App() {
   };
 
   const handleAddProduct = async (newProd: Omit<Product, 'id'>) => {
-    const id = newProd.name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(Math.random() * 100);
+    if (addingProductRef.current) {
+      return;
+    }
+    addingProductRef.current = true;
+
     const vendorId = profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO';
     const vendorName = profileInfo.companyName || profileInfo.storeName;
+    const normalizeProductField = (value: string | undefined) =>
+      (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const productColors = (product: Pick<Product, 'color' | 'colors'>) =>
+      (product.colors?.length ? product.colors : [product.color])
+        .map(color => normalizeProductField(color))
+        .filter(Boolean)
+        .sort()
+        .join('|');
+    const matchingProducts = products.filter(product =>
+      normalizeProductField(product.name) === normalizeProductField(newProd.name)
+      && normalizeProductField(product.brand) === normalizeProductField(newProd.brand)
+      && normalizeProductField(product.category) === normalizeProductField(newProd.category)
+      && productColors(product) === productColors(newProd)
+      && (product.vendorId === vendorId
+        || normalizeProductField(product.vendorName) === normalizeProductField(vendorName))
+    );
+
+    if (matchingProducts.length > 0) {
+      const [matchingProduct, ...duplicateProducts] = matchingProducts;
+      try {
+        const { doc, runTransaction, serverTimestamp } = await import('firebase/firestore');
+        const productRefs = matchingProducts.map(product => doc(db, 'products', product.id));
+        const increment = Math.max(0, Number(newProd.stock) || 0);
+        const updatedProduct = await runTransaction(db, async transaction => {
+          const snapshots = await Promise.all(productRefs.map(productRef => transaction.get(productRef)));
+          const existingSnapshots = snapshots.filter(snapshot => snapshot.exists());
+          if (existingSnapshots.length === 0) {
+            throw new Error('The existing product could not be found. Refresh the catalog and try again.');
+          }
+          const currentStock = existingSnapshots.reduce((total, snapshot) => {
+            const data = snapshot.data();
+            return total + (Number(data.stock ?? data.stockQuantity) || 0);
+          }, 0);
+          const nextStock = currentStock + increment;
+          const status: Product['status'] = nextStock > 10 ? 'In Stock' : nextStock > 0 ? 'Low Stock' : 'Out of Stock';
+          transaction.update(existingSnapshots[0].ref, {
+            stock: nextStock,
+            stockQuantity: nextStock,
+            status,
+            updatedAt: serverTimestamp()
+          });
+          existingSnapshots.slice(1).forEach(snapshot => transaction.delete(snapshot.ref));
+          return {
+            productId: existingSnapshots[0].id,
+            stock: nextStock,
+            status,
+            updatedAt: new Date().toISOString()
+          };
+        });
+
+        const primaryProduct = matchingProducts.find(product => product.id === updatedProduct.productId) || matchingProduct;
+        const mergedProduct = { ...primaryProduct, ...updatedProduct };
+        const duplicateIds = new Set(matchingProducts
+          .filter(product => product.id !== updatedProduct.productId)
+          .map(product => product.id));
+        setProducts(previous => [
+          mergedProduct,
+          ...previous.filter(product => product.id !== updatedProduct.productId && !duplicateIds.has(product.id))
+        ]);
+        setActivities(previous => [{
+          id: 'stock-' + Date.now(),
+          type: 'inventory',
+          title: 'Product Stock Updated',
+          description: `${newProd.name} stock increased by ${increment} units${duplicateProducts.length ? `; merged ${duplicateProducts.length} duplicate listing${duplicateProducts.length === 1 ? '' : 's'}` : ''}`,
+          time: 'Just now'
+        }, ...previous]);
+        return;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to add stock to existing product', err);
+        throw err;
+      } finally {
+        addingProductRef.current = false;
+      }
+    }
+
+    const id = newProd.name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(Math.random() * 100);
     const completedProduct: Product = {
       ...newProd,
       id,
@@ -622,6 +757,8 @@ export default function App() {
       // eslint-disable-next-line no-console
       console.error('Failed to save product to Firestore', err);
       throw err;
+    } finally {
+      addingProductRef.current = false;
     }
   };
 
@@ -748,6 +885,8 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
         authProfileError={authProfileError}
         onSwitchAccount={handleSwitchAccount}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode(current => !current)}
       />
     );
   }
@@ -837,6 +976,10 @@ export default function App() {
           isLoggedIn={isLoggedIn} 
           profileInfo={profileInfo}
           onMenuClick={() => setMobileMenuOpen(true)}
+          darkMode={darkMode}
+          onToggleDarkMode={() => setDarkMode(current => !current)}
+          products={products}
+          orders={orders}
         />
 
         {/* Dynamic page container */}
@@ -848,6 +991,12 @@ export default function App() {
               activities={activities}
               profileInfo={profileInfo}
               setActiveTab={handleTabChange}
+              onSelectVendor={setSelectedProductVendor}
+              onApplyProductFilters={filters => {
+                setDashboardProductFilters(filters);
+                setSelectedProductVendor(filters.vendor);
+                handleTabChange('products');
+              }}
             />
           )}
 
@@ -860,6 +1009,8 @@ export default function App() {
               setActiveTab={handleTabChange}
               onEditProduct={handleEditTrigger}
               onDeleteProduct={handleDeleteProduct}
+              selectedVendor={selectedProductVendor}
+              initialFilters={dashboardProductFilters}
             />
           )}
 
@@ -880,11 +1031,12 @@ export default function App() {
                 onUpdateOrderStatus={handleSetOrderStatus}
                 onDeleteOrder={handleDeleteOrder}
                 products={products}
+                ordersError={ordersError}
             />
           )}
 
           {activeTab === 'analytics' && (
-            <Analytics orders={orders} products={products} />
+            <Analytics orders={orders} products={products} vendorId={profileInfo.vendorId} />
           )}
 
           {activeTab === 'marketInsights' && (
@@ -904,7 +1056,10 @@ export default function App() {
           )}
 
           {activeTab === 'settings' && (
-            <Settings />
+            <Settings
+              darkMode={darkMode}
+              onToggleDarkMode={() => setDarkMode(current => !current)}
+            />
           )}
         </main>
 

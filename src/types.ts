@@ -64,14 +64,27 @@ export interface Order {
   customerInitials?: string;
   customerAvatar?: string;
   productName: string;
+  productId?: string;
   quantity: number;
   amount: number;
+  items?: OrderLineItem[];
   date: string;
   status: 'Pending' | 'Shipped' | 'Delivered' | 'Cancelled';
   vendorId?: string;
   vendorName?: string;
+  vendorIds?: string[];
+  salesEligible?: boolean;
   createdAt?: unknown;
   updatedAt?: unknown;
+}
+
+export interface OrderLineItem {
+  productId?: string;
+  vendorId?: string;
+  productName: string;
+  quantity: number;
+  amount: number;
+  status?: Order['status'];
 }
 
 export interface Activity {
@@ -93,4 +106,11 @@ export interface ProfileInfo {
   logoUrl: string;
   status: string;
   memberSince: string;
+}
+
+export interface ProductFilters {
+  category: string;
+  status: string;
+  search: string;
+  vendor: string;
 }

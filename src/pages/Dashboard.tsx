@@ -16,9 +16,10 @@ import {
   Search,
   Activity as ActivityIcon,
   ShoppingCart,
-  Package
+  Package,
+  X
 } from 'lucide-react';
-import { Product, Order, Activity, ProfileInfo } from '../types';
+import { Product, Order, Activity, ProfileInfo, ProductFilters } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatRupees, formatRupeesCompact } from '../utils/currency';
 import { calculateRevenueTrends } from '../utils/revenueTrends';
@@ -29,6 +30,8 @@ interface DashboardProps {
   activities: Activity[];
   profileInfo: ProfileInfo;
   setActiveTab: (tab: string) => void;
+  onSelectVendor: (vendor: string) => void;
+  onApplyProductFilters: (filters: ProductFilters) => void;
 }
 
 export default function Dashboard({ 
@@ -36,10 +39,16 @@ export default function Dashboard({
   orders, 
   activities, 
   profileInfo, 
-  setActiveTab 
+  setActiveTab,
+  onSelectVendor,
+  onApplyProductFilters
 }: DashboardProps) {
   const [selectedRange, setSelectedRange] = useState('Last 30 Days');
   const [searchQuery, setSearchQuery] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('All Categories');
+  const [selectedStatus, setSelectedStatus] = useState('Status: All');
+  const [selectedVendor, setSelectedVendor] = useState('all');
   const [hoveredDataPoint, setHoveredDataPoint] = useState<{ x: number; y: number; val1: string; val2: string; label: string } | null>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
@@ -55,6 +64,18 @@ export default function Dashboard({
     { id: 'all', label: 'All Vendors', count: products.length },
     ...Array.from(vendorCounts.entries()).map(([name, count]) => ({ id: name, label: name, count }))
   ];
+  const categoryOptions = Array.from(new Set(products
+    .map(product => product.category.trim())
+    .filter(Boolean))).sort();
+
+  const applyProductFilters = () => {
+    onApplyProductFilters({
+      category: selectedCategory,
+      status: selectedStatus,
+      search: searchQuery.trim(),
+      vendor: selectedVendor
+    });
+  };
 
   const topRatedProducts = [...products]
     .sort((a, b) => (b.rating || 0) - (a.rating || 0))
@@ -153,12 +174,82 @@ export default function Dashboard({
               />
             </div>
             <button
+              type="button"
+              onClick={() => setFiltersOpen(open => !open)}
+              aria-expanded={filtersOpen}
               className="flex items-center justify-center gap-2 rounded-3xl border border-white/15 bg-white/5 px-4 py-4 text-sm font-semibold text-white hover:bg-white/10 transition"
             >
               <Filter className="w-4 h-4" />
-              Filters
+              {filtersOpen ? 'Hide Filters' : 'Filters'}
             </button>
           </div>
+          {filtersOpen && (
+            <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="flex flex-col gap-2 text-xs font-semibold text-slate-300">
+                Category
+                <select
+                  value={selectedCategory}
+                  onChange={event => setSelectedCategory(event.target.value)}
+                  className="rounded-xl border border-white/15 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-300"
+                >
+                  <option>All Categories</option>
+                  {categoryOptions.map(category => <option key={category}>{category}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-2 text-xs font-semibold text-slate-300">
+                Stock status
+                <select
+                  value={selectedStatus}
+                  onChange={event => setSelectedStatus(event.target.value)}
+                  className="rounded-xl border border-white/15 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-300"
+                >
+                  <option>Status: All</option>
+                  <option>In Stock</option>
+                  <option>Low Stock</option>
+                  <option>Out of Stock</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-2 text-xs font-semibold text-slate-300">
+                Vendor
+                <select
+                  value={selectedVendor}
+                  onChange={event => setSelectedVendor(event.target.value)}
+                  className="rounded-xl border border-white/15 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-300"
+                >
+                  <option value="all">All Vendors</option>
+                  {Array.from(vendorCounts.keys()).map(vendor => <option key={vendor} value={vendor}>{vendor}</option>)}
+                </select>
+              </label>
+              <div className="flex items-end gap-2">
+                <button
+                  type="button"
+                  onClick={applyProductFilters}
+                  className="flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white transition hover:bg-primary/80"
+                >
+                  Apply Filters
+                </button>
+                <button
+                  type="button"
+                  aria-label="Clear product filters"
+                  onClick={() => {
+                    setSelectedCategory('All Categories');
+                    setSelectedStatus('Status: All');
+                    setSelectedVendor('all');
+                    setSearchQuery('');
+                    onApplyProductFilters({
+                      category: 'All Categories',
+                      status: 'Status: All',
+                      search: '',
+                      vendor: 'all'
+                    });
+                  }}
+                  className="rounded-xl border border-white/15 px-3 py-2.5 text-white transition hover:bg-white/10"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -172,25 +263,31 @@ export default function Dashboard({
             </button>
           </div>
 
-          <div className="overflow-x-auto pb-1">
-            <div className="flex gap-4 min-w-max">
+          <div className="pb-1">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {vendors.map((vendor) => (
                 <button
                   key={vendor.id}
                   type="button"
-                  onClick={() => setActiveTab(vendor.id === 'all' ? 'dashboard' : 'products')}
-                  className="min-w-[180px] rounded-3xl border border-slate-200/50 bg-white/90 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  onClick={() => {
+                    onSelectVendor(vendor.id === 'all' ? 'all' : vendor.label);
+                    setActiveTab('products');
+                  }}
+                  className="w-full min-w-0 rounded-2xl border border-slate-200/70 bg-white/90 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="rounded-2xl bg-slate-100 p-3 text-slate-600">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="shrink-0 rounded-2xl bg-slate-100 p-3 text-slate-600">
                       <Package className="w-5 h-5" />
                     </div>
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                      {vendor.id === 'all' ? 'All Vendors' : `${vendor.count} Products`}
+                    <span className="vendor-count-badge rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold tabular-nums text-primary">
+                      {vendor.count.toLocaleString()} {vendor.count === 1 ? 'product' : 'products'}
                     </span>
                   </div>
-                  <div className="mt-6 text-sm font-bold text-slate-900">
+                  <div className="mt-4 truncate text-sm font-bold text-slate-800">
                     {vendor.label}
+                  </div>
+                  <div className="mt-1 text-xs font-medium text-slate-500">
+                    View product catalog
                   </div>
                 </button>
               ))}

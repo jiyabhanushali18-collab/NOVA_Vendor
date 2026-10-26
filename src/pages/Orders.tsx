@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Download, 
   Plus, 
@@ -28,20 +28,30 @@ interface OrdersProps {
   onUpdateOrderStatus?: (orderId: string, status: Order['status']) => Promise<void>;
   onDeleteOrder?: (orderId: string) => Promise<void>;
   products?: Product[];
+  ordersError?: string;
 }
 
-export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrderStatus, onDeleteOrder, products = [] }: OrdersProps) {
+export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrderStatus, onDeleteOrder, products = [], ordersError = '' }: OrdersProps) {
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [channelFilter, setChannelFilter] = useState('All Channels');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
   
   // New order form fields state
   const [customerName, setCustomerName] = useState('');
   const [productName, setProductName] = useState(products[0]?.name || '');
   const [quantity, setQuantity] = useState(1);
   const [amount, setAmount] = useState(120);
+
+  useEffect(() => {
+    if (!productName && products.length > 0) {
+      setProductName(products[0].name);
+      setAmount(products[0].price);
+    }
+  }, [productName, products]);
 
   const itemsPerPage = 5;
 
@@ -64,6 +74,43 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+
+  const handleExportOrders = () => {
+    setActionError('');
+    try {
+      const rows: unknown[][] = [
+        ['Order ID', 'Customer Name', 'Product', 'Quantity', 'Amount', 'Date', 'Status'],
+        ...filteredOrders.map(order => [
+          order.id,
+          order.customerName,
+          order.productName,
+          order.quantity,
+          order.amount,
+          order.date,
+          order.status
+        ])
+      ];
+      const csv = rows.map(row => row.map(value => {
+        const cell = String(value ?? '');
+        const safeCell = /^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell;
+        return `"${safeCell.replace(/"/g, '""')}"`;
+      }).join(',')).join('\r\n');
+      const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `nova-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error('Failed to export orders CSV', error);
+      setActionError(error instanceof Error ? `Could not download orders CSV: ${error.message}` : 'Could not download orders CSV.');
+    }
+  };
+
   const activeOrderList = orders.filter(order => order.status !== 'Cancelled');
   const netVolume = activeOrderList.reduce((sum, order) => sum + order.amount, 0);
   const activeShipmentCount = orders.filter(order => order.status === 'Pending' || order.status === 'Shipped').length;
@@ -85,50 +132,71 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName) return;
+    if (isSavingOrder) return;
+    setActionError('');
+    setIsSavingOrder(true);
 
     const getInitials = (name: string) => {
       const parts = name.split(' ');
       return parts.map(p => p[0]).join('').toUpperCase().slice(0, 2);
     };
 
-    const newOrder: Order = {
-      id: '#NV-' + Math.floor(8834 + Math.random() * 1000),
-      customerName,
-      customerInitials: getInitials(customerName),
-      productName,
-      quantity,
-      amount,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-      status: 'Pending'
-    };
+    try {
+      const newOrder: Order = {
+        id: '#NV-' + Math.floor(8834 + Math.random() * 1000),
+        customerName: customerName.trim(),
+        customerInitials: getInitials(customerName.trim()),
+        productName,
+        quantity,
+        amount,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+        status: 'Pending'
+      };
 
-    if (onCreateOrder) {
-      await onCreateOrder(newOrder);
-    } else {
-      setOrders(prev => [newOrder, ...prev]);
+      if (onCreateOrder) {
+        await onCreateOrder(newOrder);
+      } else {
+        setOrders(prev => [newOrder, ...prev]);
+      }
+      setShowNewOrderModal(false);
+      setCustomerName('');
+      setQuantity(1);
+      setAmount(120);
+      setCurrentPage(1);
+    } catch (error) {
+      console.error('Failed to create order', error);
+      setActionError(error instanceof Error ? error.message : 'Could not save the order. Please try again.');
+    } finally {
+      setIsSavingOrder(false);
     }
-    setShowNewOrderModal(false);
-    setCustomerName('');
-    setQuantity(1);
-    setAmount(120);
-    setCurrentPage(1);
   };
 
   const handleStatusChange = async (orderId: string, nextStatus: 'Pending' | 'Shipped' | 'Delivered' | 'Cancelled') => {
-    if (onUpdateOrderStatus) {
-      await onUpdateOrderStatus(orderId, nextStatus);
-    } else {
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o));
+    setActionError('');
+    try {
+      if (onUpdateOrderStatus) {
+        await onUpdateOrderStatus(orderId, nextStatus);
+      } else {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o));
+      }
+    } catch (error) {
+      console.error('Failed to update order status', error);
+      setActionError(error instanceof Error ? error.message : 'Could not update the order status.');
     }
   };
 
   const handleDeleteOrder = async (orderId: string) => {
     if (confirm("Are you sure you want to remove this order?")) {
-      if (onDeleteOrder) {
-        await onDeleteOrder(orderId);
-      } else {
-        setOrders(prev => prev.filter(o => o.id !== orderId));
+      setActionError('');
+      try {
+        if (onDeleteOrder) {
+          await onDeleteOrder(orderId);
+        } else {
+          setOrders(prev => prev.filter(o => o.id !== orderId));
+        }
+      } catch (error) {
+        console.error('Failed to remove order', error);
+        setActionError(error instanceof Error ? error.message : 'Could not remove the order.');
       }
     }
   };
@@ -146,10 +214,9 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
           </p>
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={() => {
-              alert("Exporting transaction list as standard-compliant CSV format to downloads directory.");
-            }}
+          <button
+            type="button"
+            onClick={handleExportOrders}
             className="flex items-center gap-2 px-5 py-2.5 bg-white/60 border border-slate-200/50 text-primary font-display text-sm font-bold rounded-xl hover:bg-white/90 cursor-pointer transition-all shrink-0"
           >
             <Download className="w-4 h-4 text-primary" />
@@ -165,6 +232,17 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
           </button>
         </div>
       </div>
+
+      {actionError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+          {actionError}
+        </div>
+      )}
+      {ordersError && (
+        <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          {ordersError} If this continues, verify vendor access and deploy the latest Firestore rules and Cloud Functions.
+        </div>
+      )}
 
       {/* Dashboard Filters Panel */}
       <div className="bg-white/70 backdrop-blur-md border border-slate-200/50 p-6 rounded-2xl flex flex-wrap items-center gap-6">
@@ -322,13 +400,15 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
                         </td>
                         <td className="px-6 py-4.5 text-right">
                           <div className="flex md:opacity-0 group-hover:opacity-100 transition-opacity gap-1 justify-end select-none">
-                            <button 
-                              onClick={() => handleDeleteOrder(order.id)}
-                              className="p-1 hover:bg-rose-50 text-rose-450 hover:text-rose-600 rounded-lg cursor-pointer"
-                              title="Delete log"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {!order.salesEligible && (!order.vendorIds || order.vendorIds.length <= 1) && (
+                              <button
+                                onClick={() => handleDeleteOrder(order.id)}
+                                className="p-1 hover:bg-rose-50 text-rose-450 hover:text-rose-600 rounded-lg cursor-pointer"
+                                title="Delete log"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </motion.tr>
@@ -441,11 +521,32 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
               
               <form onSubmit={handleCreateOrder} className="space-y-4">
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">PRODUCT NAME</label>
+                  <label htmlFor="order-customer-name" className="text-xs font-bold text-slate-400 uppercase tracking-wider">Customer Name</label>
+                  <input
+                    id="order-customer-name"
+                    type="text"
+                    value={customerName}
+                    onChange={e => setCustomerName(e.target.value)}
+                    placeholder="Enter customer name"
+                    autoComplete="name"
+                    required
+                    className="w-full bg-white/40 border border-primary/20 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="order-product-name" className="text-xs font-bold text-slate-400 uppercase tracking-wider">Product Name</label>
                   {products.length > 0 ? (
                     <select
+                      id="order-product-name"
                       value={productName}
-                      onChange={e => setProductName(e.target.value)}
+                      onChange={e => {
+                        const selectedProduct = products.find(product => product.name === e.target.value);
+                        setProductName(e.target.value);
+                        if (selectedProduct) {
+                          setAmount(selectedProduct.price * quantity);
+                        }
+                      }}
                       className="bg-white/40 border border-primary/20 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none"
                       required
                     >
@@ -453,30 +554,15 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
                     </select>
                   ) : (
                     <input
+                      id="order-product-name"
                       type="text"
                       value={productName}
                       onChange={e => setProductName(e.target.value)}
-                      placeholder="Add a product first"
+                      placeholder="Enter product name"
                       className="bg-white/40 border border-primary/20 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none"
                       required
                     />
                   )}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Product Selection</label>
-                  <select 
-                    value={productName}
-                    onChange={e => setProductName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl h-11 px-3 text-sm font-semibold focus:outline-none focus:border-primary outline-none cursor-pointer"
-                  >
-                    <option>Prism Core X14</option>
-                    <option>Nova Core Pro</option>
-                    <option>Lidar Module v2</option>
-                    <option>Refraction Kit</option>
-                    <option>Nova Power Filter</option>
-                    <option>Eclipse Prime</option>
-                  </select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -485,8 +571,17 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
                     <input 
                       type="number" 
                       min={1}
+                      step={1}
                       value={quantity}
-                      onChange={e => setQuantity(Number(e.target.value))}
+                      onChange={e => {
+                        const nextQuantity = Number(e.target.value);
+                        setQuantity(nextQuantity);
+                        const selectedProduct = products.find(product => product.name === productName);
+                        if (selectedProduct && nextQuantity > 0) {
+                          setAmount(selectedProduct.price * nextQuantity);
+                        }
+                      }}
+                      required
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl h-11 px-3 text-sm font-semibold focus:outline-none focus:border-primary transition-all outline-none"
                     />
                   </div>
@@ -495,8 +590,10 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
                     <input 
                       type="number" 
                       min={1}
+                      step="0.01"
                       value={amount}
                       onChange={e => setAmount(Number(e.target.value))}
+                      required
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl h-11 px-3 text-sm font-semibold focus:outline-none focus:border-primary transition-all outline-none"
                     />
                   </div>
@@ -505,18 +602,28 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
                 <div className="flex items-center gap-3 pt-4 border-t border-slate-100 mt-6">
                   <button 
                     type="button" 
-                    onClick={() => setShowNewOrderModal(false)}
-                    className="flex-1 py-3 text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                    onClick={() => {
+                      setShowNewOrderModal(false);
+                      setActionError('');
+                    }}
+                    disabled={isSavingOrder}
+                    className="flex-1 py-3 text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit" 
-                    className="flex-1 py-3 text-sm font-bold text-white bg-gradient-to-r from-primary to-secondary rounded-xl hover:brightness-110 shadow-lg shadow-primary/10 transition-all cursor-pointer"
+                    disabled={isSavingOrder || !customerName.trim() || !productName.trim() || quantity < 1 || amount < 1}
+                    className="flex-1 py-3 text-sm font-bold text-white bg-gradient-to-r from-primary to-secondary rounded-xl hover:brightness-110 shadow-lg shadow-primary/10 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Save Order
+                    {isSavingOrder ? 'Saving...' : 'Save Order'}
                   </button>
                 </div>
+                {actionError && (
+                  <p role="alert" className="text-sm font-medium text-rose-600">
+                    {actionError}
+                  </p>
+                )}
               </form>
             </motion.div>
           </div>

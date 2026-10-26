@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsVendor(id) {
+      return signedIn() && (
+        (
+          exists(/databases/$(database)/documents/owner/$(request.auth.uid))
+          && get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId == id
+        )
+        || (
+          exists(/databases/$(database)/documents/vendors/$(id))
+          && get(/databases/$(database)/documents/vendors/$(id)).data.uid == request.auth.uid
+        )
+      );
+    }
+
+    function currentVendorId() {
+      return get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId;
+    }
+
+    function orderBelongsToVendor(data) {
+      return signedIn() && (
+        ('vendorId' in data && ownsVendor(data.vendorId))
+        || (
+          'vendorIds' in data
+          && data.vendorIds is list
+          && data.vendorIds.hasAny([
+            get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId
+          ])
+        )
+      );
+    }
+
+    match /owner/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && (
+          !('vendorId' in request.resource.data)
+          || request.resource.data.vendorId is string
+          && request.resource.data.vendorId.matches('VEN[0-9]{3}')
+          && (
+            !exists(/databases/$(database)/documents/vendors/$(request.resource.data.vendorId))
+            || getAfter(/databases/$(database)/documents/vendors/$(request.resource.data.vendorId)).data.uid == uid
+          )
+        );
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.vendorId == resource.data.vendorId
+        && request.resource.data.uid == uid;
+      allow delete: if false;
+    }
+
+    match /vendors/{vendorId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId == vendorId;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId == vendorId;
+      allow delete: if false;
+    }
+
+    match /metadata/vendors {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.lastVendorNumber == 6
+        && request.resource.data.keys().hasOnly(['lastVendorNumber', 'updatedAt']);
+      allow update: if signedIn()
+        && request.resource.data.lastVendorNumber == resource.data.lastVendorNumber + 1
+        && request.resource.data.keys().hasOnly(['lastVendorNumber', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if signedIn() && ownsVendor(request.resource.data.vendorId);
+      allow update: if signedIn()
+        && ownsVendor(resource.data.vendorId)
+        && request.resource.data.vendorId == resource.data.vendorId;
+      allow delete: if signedIn() && ownsVendor(resource.data.vendorId);
+    }
+
+    match /orders/{orderId} {
+      allow get: if orderBelongsToVendor(resource.data)
+        || (signedIn() && exists(/databases/$(database)/documents/customerOrders/$(request.auth.uid)/orders/$(orderId)));
+      allow list: if orderBelongsToVendor(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.vendorId == currentVendorId()
+        && request.resource.data.keys().hasOnly([
+          'id', 'customerName', 'customerInitials', 'customerAvatar', 'productName',
+          'quantity', 'amount', 'date', 'status', 'vendorId', 'vendorName',
+          'createdAt', 'updatedAt'
+        ]);
+      allow update: if false;
+      allow delete: if orderBelongsToVendor(resource.data)
+        && (!('salesEligible' in resource.data) || resource.data.salesEligible != true)
+        && (!('vendorIds' in resource.data) || resource.data.vendorIds.size() == 1);
+    }
+
+    match /vendorOrders/{vendorId}/orders/{orderId} {
+      allow read: if ownsVendor(vendorId);
+      allow write: if false;
+    }
+
+    match /customerOrders/{customerId}/orders/{orderId} {
+      allow read: if signedIn() && request.auth.uid == customerId;
+      allow write: if false;
+    }
+
+    match /vendorSales/{vendorId}/products/{productId} {
+      allow read: if ownsVendor(vendorId);
+      allow write: if false;
+    }
+
+    match /vendorSales/{vendorId}/dailyProducts/{dailyProductId} {
+      allow read: if ownsVendor(vendorId);
+      allow write: if false;
+    }
+
+    match /analytics_events/{eventId} {
+      allow read: if ownsVendor(resource.data.vendorId);
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
