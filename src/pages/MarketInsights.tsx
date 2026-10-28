@@ -788,7 +788,7 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
                             <div className="flex items-center gap-2 min-w-0">
                               <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
                                 {prod.imageUrl && (
-                                  <img src={prod.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                  <img src={prod.imageUrl || undefined} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                 )}
                               </div>
                               <span className="text-xs font-bold text-slate-800 truncate">{prod.productName}</span>
@@ -822,7 +822,7 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
                   <div key={prod.productId} className="flex items-center justify-between p-3 rounded-2xl bg-white/60 border border-slate-100 hover:border-primary/20 transition">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 p-0.5">
-                        <img src={prod.imageUrl} alt={prod.name} className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" />
+                        <img src={prod.imageUrl || undefined} alt={prod.name} className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" />
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -897,7 +897,7 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
                 <div key={item.productId} className="flex items-center justify-between p-3 rounded-2xl bg-white/80 border border-slate-100">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden shrink-0">
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-800 truncate">{item.name}</p>
@@ -1113,7 +1113,7 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
                 <div key={item.productId} className="flex items-center justify-between p-3 rounded-2xl bg-white/80 border border-slate-100">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden shrink-0">
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-800 truncate">{item.name}</p>
@@ -1142,7 +1142,7 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
                 <div key={item.productId} className="p-3 rounded-2xl bg-amber-50/50 border border-amber-200/60 flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-white overflow-hidden shrink-0">
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-800 truncate">{item.name}</p>

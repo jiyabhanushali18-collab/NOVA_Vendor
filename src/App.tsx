@@ -15,6 +15,7 @@ import Analytics from './pages/Analytics';
 import MarketInsights from './pages/MarketInsights';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import Feedback from './pages/Feedback';
 import { subscribeToProducts, type ProductDocument } from './services/ProductService';
 import { removeOrder, subscribeToOrders, updateOrderStatus } from './services/OrderService';
 import { trackPurchaseCompleted } from './services/AnalyticsEventService';
@@ -935,6 +936,7 @@ export default function App() {
             { id: 'orders', label: 'Orders' },
             { id: 'analytics', label: 'Analytics' },
             { id: 'marketInsights', label: 'Market Insights' },
+            { id: 'feedback', label: 'Try-On Feedback' },
             { id: 'profile', label: 'Profile' },
             { id: 'settings', label: 'Settings' }
           ].map((item) => (
@@ -980,6 +982,7 @@ export default function App() {
           onToggleDarkMode={() => setDarkMode(current => !current)}
           products={products}
           orders={orders}
+          uid={auth.currentUser?.uid || ''}
         />
 
         {/* Dynamic page container */}
@@ -1048,6 +1051,10 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'feedback' && (
+            <Feedback vendorId={profileInfo.vendorId} products={products} />
+          )}
+
           {activeTab === 'profile' && (
             <Profile 
               profileInfo={profileInfo}
@@ -1059,6 +1066,7 @@ export default function App() {
             <Settings
               darkMode={darkMode}
               onToggleDarkMode={() => setDarkMode(current => !current)}
+              uid={auth.currentUser?.uid || ''}
             />
           )}
         </main>

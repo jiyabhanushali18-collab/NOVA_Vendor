@@ -7,7 +7,8 @@ import {
   Sparkles,
   UserCircle, 
   Settings,
-  Boxes
+  Boxes,
+  MessageSquareText
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -27,6 +28,7 @@ export default function Sidebar({ activeTab, setActiveTab, isLoggedIn, onLogout 
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'marketInsights', label: 'Market Insights', icon: Sparkles },
+    { id: 'feedback', label: 'Try-On Feedback', icon: MessageSquareText },
     { id: 'profile', label: 'Profile', icon: UserCircle },
   ];
 

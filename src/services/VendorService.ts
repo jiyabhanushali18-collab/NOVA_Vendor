@@ -3,7 +3,8 @@ import {
   getDoc,
   runTransaction,
   serverTimestamp,
-  setDoc
+  setDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ProfileInfo } from '../types';
@@ -188,7 +189,7 @@ export const createVendorProfile = async (
       updatedAt: serverTimestamp()
     };
 
-    await Promise.allSettled([
+    await Promise.all([
       setDoc(doc(db, 'owner', uid), firestoreRecord, { merge: true }),
       setDoc(doc(db, 'vendors', vendorId), firestoreRecord, { merge: true })
     ]);
@@ -219,12 +220,12 @@ export const updateVendorProfile = async (
     updatedAt: serverTimestamp()
   };
 
-  saveLocalVendorProfile(uid, profile);
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'owner', uid), updates, { merge: true });
+  if (vendorId) {
+    batch.set(doc(db, 'vendors', vendorId), updates, { merge: true });
+  }
+  await batch.commit();
 
-  await Promise.allSettled([
-    setDoc(doc(db, 'owner', uid), updates, { merge: true }),
-    vendorId
-      ? setDoc(doc(db, 'vendors', vendorId), updates, { merge: true })
-      : Promise.resolve()
-  ]);
+  saveLocalVendorProfile(uid, profile);
 };

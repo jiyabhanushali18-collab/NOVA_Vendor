@@ -315,12 +315,19 @@ export default function Dashboard({
                   className="rounded-3xl border border-slate-800 bg-slate-900/95 p-4 flex items-center gap-4"
                 >
                   <div className="h-16 w-16 overflow-hidden rounded-3xl bg-slate-800 shrink-0">
-                    <img
-                      src={product.imageUrl || product.mainImage || product.images?.[0] || ''}
-                      alt={product.name}
-                      className="h-full w-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
+                    {product.imageUrl || product.mainImage || product.images?.[0] ? (
+                      <img
+                        src={product.imageUrl || product.mainImage || product.images?.[0]}
+                        alt={product.name}
+                        className="h-full w-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={event => {
+                          event.currentTarget.hidden = true;
+                        }}
+                      />
+                    ) : (
+                      <Package className="m-auto mt-5 h-6 w-6 text-slate-400" aria-hidden="true" />
+                    )}
                   </div>
                   <div className="min-w-0">
                     <h4 className="font-semibold text-sm text-white truncate">{product.name}</h4>
@@ -634,7 +641,19 @@ export default function Dashboard({
                     <td className="py-4 block md:table-cell">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-0.5 overflow-hidden shadow-sm shrink-0">
-                          <img className="w-full h-full object-cover rounded" src={product.imageUrl || product.mainImage || product.images?.[0] || ''} alt={product.name} referrerPolicy="no-referrer" />
+                          {product.imageUrl || product.mainImage || product.images?.[0] ? (
+                            <img
+                              className="w-full h-full object-cover rounded"
+                              src={product.imageUrl || product.mainImage || product.images?.[0]}
+                              alt={product.name}
+                              referrerPolicy="no-referrer"
+                              onError={event => {
+                                event.currentTarget.hidden = true;
+                              }}
+                            />
+                          ) : (
+                            <Package className="m-auto mt-3 h-5 w-5 text-slate-400" aria-hidden="true" />
+                          )}
                         </div>
                         <span className="font-bold text-slate-700 text-sm">{product.name}</span>
                       </div>

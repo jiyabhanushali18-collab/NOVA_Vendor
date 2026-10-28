@@ -240,12 +240,19 @@ export default function Products({ products, profileInfo, isLoading = false, set
                       <td className="p-5">
                         <div className="flex items-center gap-4">
                           <div className="w-16 h-12 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200 shadow-sm p-0.5">
-                            <img 
-                              alt={product.name} 
-                              className="w-full h-full object-cover rounded" 
-                              src={product.imageUrl || product.mainImage || product.images?.[0] || ''}
-                              referrerPolicy="no-referrer"
-                            />
+                            {product.imageUrl || product.mainImage || product.images?.[0] ? (
+                              <img
+                                alt={product.name}
+                                className="w-full h-full object-cover rounded"
+                                src={product.imageUrl || product.mainImage || product.images?.[0]}
+                                referrerPolicy="no-referrer"
+                                onError={event => {
+                                  event.currentTarget.hidden = true;
+                                }}
+                              />
+                            ) : (
+                              <Package className="m-auto h-5 w-5 text-slate-400" aria-hidden="true" />
+                            )}
                           </div>
                           <div className="min-w-0">
                             <div className="font-display font-bold text-slate-700 text-sm truncate">{product.name}</div>

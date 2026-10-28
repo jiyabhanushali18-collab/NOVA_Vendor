@@ -573,7 +573,19 @@ export default function Analytics({ orders, products, vendorId = '' }: Analytics
                     <td className="py-4 block md:table-cell">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl bg-slate-100/80 border border-slate-200 overflow-hidden flex items-center justify-center p-0.5 shrink-0">
-                          <img alt={product.name} className="w-full h-full object-cover rounded-lg" src={product.imageUrl || product.mainImage || product.images?.[0] || ''} referrerPolicy="no-referrer" />
+                          {product.imageUrl || product.mainImage || product.images?.[0] ? (
+                            <img
+                              alt={product.name}
+                              className="w-full h-full object-cover rounded-lg"
+                              src={product.imageUrl || product.mainImage || product.images?.[0]}
+                              referrerPolicy="no-referrer"
+                              onError={event => {
+                                event.currentTarget.hidden = true;
+                              }}
+                            />
+                          ) : (
+                            <Package className="h-5 w-5 text-slate-400" aria-hidden="true" />
+                          )}
                         </div>
                         <div>
                           <p className="font-semibold text-slate-700 text-sm">{product.name}</p>

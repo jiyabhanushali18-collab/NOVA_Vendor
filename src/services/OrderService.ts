@@ -244,7 +244,7 @@ export const subscribeToOrders = (
           emitMergedOrders();
         },
         error => {
-          onError?.(error);
+          onError?.(new Error(`Failed to load ${queryKey} orders: ${error.message}`));
           emitMergedOrders();
         }
       );
@@ -252,7 +252,6 @@ export const subscribeToOrders = (
     };
 
     subscribeToQuery('single-vendor', query(collection(db, 'orders'), where('vendorId', '==', vendorId)));
-    subscribeToQuery('multiple-vendor', query(collection(db, 'orders'), where('vendorIds', 'array-contains', vendorId)));
     subscribeToQuery('vendor-feed', query(collection(db, 'vendorOrders', vendorId, 'orders')));
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));

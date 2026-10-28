@@ -88,6 +88,10 @@ const getPasswordResetErrorMessage = (err: unknown) => {
   }
 };
 
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+const MAX_LOGO_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 export default function Login({ onLoginSuccess, authProfileError, onSwitchAccount, darkMode, onToggleDarkMode }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -120,8 +124,19 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
       return;
     }
 
-    if (!file.type.startsWith('image/')) {
-      setError('Please choose an image file for the brand logo.');
+    if (!ALLOWED_LOGO_TYPES.has(file.type)) {
+      setError('Choose a JPG, PNG, or WebP image for the brand logo.');
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
+      return;
+    }
+
+    if (file.size > MAX_LOGO_SIZE_BYTES) {
+      setError('Brand logos must be 5 MB or smaller.');
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
       return;
     }
 
@@ -167,6 +182,11 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
 
       if (!/^\d{10}$/.test(vendorDetails.phoneNumber)) {
         setError('Enter a valid 10-digit phone number.');
+        return;
+      }
+
+      if (!GSTIN_PATTERN.test(vendorDetails.gstNumber.trim().toUpperCase())) {
+        setError('Enter a valid 15-character GSTIN.');
         return;
       }
     }
@@ -383,6 +403,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 active:scale-90 transition-all"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -404,6 +425,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                       value={vendorDetails.companyName}
                       onChange={(e) => updateVendorDetails('companyName', e.target.value)}
                       placeholder="Enter your company name"
+                      maxLength={100}
                       required
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
                     />
@@ -437,7 +459,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                       ref={logoInputRef}
                       id="brandLogo"
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp"
                       onChange={(e) => updateLogo(e.target.files)}
                       className="sr-only"
                     />
@@ -456,6 +478,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                       value={vendorDetails.ownerName}
                       onChange={(e) => updateVendorDetails('ownerName', e.target.value)}
                       placeholder="Enter owner name"
+                      maxLength={100}
                       required
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
                     />
@@ -489,8 +512,12 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                       id="gstNumber"
                       type="text"
                       value={vendorDetails.gstNumber}
-                      onChange={(e) => updateVendorDetails('gstNumber', e.target.value)}
+                      onChange={(e) => updateVendorDetails('gstNumber', e.target.value.toUpperCase())}
                       placeholder="27ABCDE1234F1Z5"
+                      maxLength={15}
+                      minLength={15}
+                      pattern="[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]"
+                      title="Enter a valid 15-character GSTIN, for example 27ABCDE1234F1Z5."
                       required
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
                     />
@@ -534,6 +561,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
                       value={vendorDetails.businessAddress}
                       onChange={(e) => updateVendorDetails('businessAddress', e.target.value)}
                       placeholder="Mumbai, Maharashtra"
+                      maxLength={300}
                       required
                       className="w-full h-12 pl-12 pr-4 rounded-xl border border-primary/25 bg-white/40 font-medium text-slate-700 placeholder-slate-400 focus:bg-white/60 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 outline-none"
                     />

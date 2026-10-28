@@ -19,7 +19,10 @@ service cloud.firestore {
     }
 
     function currentVendorId() {
-      return get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId;
+      return signedIn()
+        && exists(/databases/$(database)/documents/owner/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId
+        : null;
     }
 
     function orderBelongsToVendor(data) {
@@ -28,9 +31,8 @@ service cloud.firestore {
         || (
           'vendorIds' in data
           && data.vendorIds is list
-          && data.vendorIds.hasAny([
-            get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId
-          ])
+          && currentVendorId() is string
+          && data.vendorIds.hasAny([currentVendorId()])
         )
       );
     }
@@ -51,7 +53,16 @@ service cloud.firestore {
       allow update: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.vendorId == resource.data.vendorId
-        && request.resource.data.uid == uid;
+        && request.resource.data.uid == uid
+        && (
+          !('notificationPreferences' in request.resource.data)
+          || request.resource.data.notificationPreferences is map
+          && request.resource.data.notificationPreferences.keys().hasOnly(['orderAlerts', 'stockWarnings'])
+          && (!('orderAlerts' in request.resource.data.notificationPreferences)
+            || request.resource.data.notificationPreferences.orderAlerts is bool)
+          && (!('stockWarnings' in request.resource.data.notificationPreferences)
+            || request.resource.data.notificationPreferences.stockWarnings is bool)
+        );
       allow delete: if false;
     }
 
@@ -132,7 +143,51 @@ service cloud.firestore {
 
     match /reviews/{reviewId} {
       allow read: if true;
-      allow write: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'productId', 'productName', 'vendorId', 'arTryOn', 'arRating', 'rating',
+          'comment', 'feedback', 'review', 'author', 'customerName',
+          'userName', 'userId', 'uid', 'color', 'variantColor',
+          'createdAt', 'timestamp'
+        ])
+        && request.resource.data.productId is string
+        && request.resource.data.vendorId is string
+        && request.resource.data.arTryOn == true
+        && (
+          ('arRating' in request.resource.data
+            && request.resource.data.arRating is number
+            && request.resource.data.arRating >= 1
+            && request.resource.data.arRating <= 5)
+          || (!('arRating' in request.resource.data)
+            && 'rating' in request.resource.data
+            && request.resource.data.rating is number
+            && request.resource.data.rating >= 1
+            && request.resource.data.rating <= 5)
+        )
+        && (!('comment' in request.resource.data) || request.resource.data.comment is string && request.resource.data.comment.size() <= 1000)
+        && (!('feedback' in request.resource.data) || request.resource.data.feedback is string && request.resource.data.feedback.size() <= 1000)
+        && (!('review' in request.resource.data) || request.resource.data.review is string && request.resource.data.review.size() <= 1000)
+        && (!('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid)
+        && (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid)
+        && request.resource.data.createdAt == request.time
+        && (!('productName' in request.resource.data) || request.resource.data.productName is string)
+        && exists(/databases/$(database)/documents/products/$(request.resource.data.productId))
+        && get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.vendorId == request.resource.data.vendorId;
+      allow update, delete: if false;
+    }
+
+    match /product_reviews/{reviewId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.productId is string
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.accountUid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0;
+      allow update, delete: if signedIn()
+        && resource.data.accountUid == request.auth.uid;
     }
 
     match /{document=**} {

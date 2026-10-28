@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Menu, Search, Bell, Package, ShoppingCart, Check } from 'lucide-react';
 import { Order, Product, ProfileInfo } from '../types';
 import ThemeToggle from './ThemeToggle';
+import {
+  DEFAULT_VENDOR_NOTIFICATION_PREFERENCES,
+  subscribeToVendorNotificationPreferences,
+  type VendorNotificationPreferences
+} from '../services/VendorSettingsService';
 
 interface HeaderProps {
   activeTab: string;
@@ -13,6 +18,7 @@ interface HeaderProps {
   onToggleDarkMode: () => void;
   products: Product[];
   orders: Order[];
+  uid: string;
 }
 
 interface VendorNotification {
@@ -32,10 +38,14 @@ export default function Header({
   darkMode,
   onToggleDarkMode,
   products,
-  orders
+  orders,
+  uid
 }: HeaderProps) {
   const [headerSearch, setHeaderSearch] = React.useState('');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState<VendorNotificationPreferences>(
+    DEFAULT_VENDOR_NOTIFICATION_PREFERENCES
+  );
   const notificationPanelRef = useRef<HTMLDivElement>(null);
   const storageKey = `nova-vendor-read-notifications-${profileInfo.vendorId || 'default'}`;
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
@@ -49,7 +59,7 @@ export default function Header({
   });
 
   const notifications = useMemo<VendorNotification[]>(() => [
-    ...orders
+    ...(notificationPreferences.orderAlerts ? orders
       .filter(order => order.status === 'Pending')
       .slice(0, 5)
       .map(order => ({
@@ -58,8 +68,8 @@ export default function Header({
         message: `${order.customerName} · ${order.productName}`,
         tab: 'orders' as const,
         icon: ShoppingCart
-      })),
-    ...products
+      })) : []),
+    ...(notificationPreferences.stockWarnings ? products
       .filter(product => product.stock > 0 && product.stock <= 10)
       .slice(0, 5)
       .map(product => ({
@@ -68,10 +78,22 @@ export default function Header({
         message: `${product.name} · ${product.stock} ${product.stock === 1 ? 'unit' : 'units'} left`,
         tab: 'products' as const,
         icon: Package
-      }))
-  ], [orders, products]);
+      })) : [])
+  ], [notificationPreferences, orders, products]);
 
   const unreadCount = notifications.filter(notification => !readNotificationIds.includes(notification.id)).length;
+
+  useEffect(() => {
+    if (!uid) {
+      setNotificationPreferences(DEFAULT_VENDOR_NOTIFICATION_PREFERENCES);
+      return;
+    }
+    return subscribeToVendorNotificationPreferences(
+      uid,
+      setNotificationPreferences,
+      error => console.error('Failed to load notification preferences for the header', error)
+    );
+  }, [uid]);
 
   useEffect(() => {
     try {
@@ -123,6 +145,7 @@ export default function Header({
       case 'orders': return 'Orders';
       case 'analytics': return 'Analytics';
       case 'marketInsights': return 'AI Market Insights';
+      case 'feedback': return 'Try-On Feedback';
       case 'profile': return 'Profile';
       case 'settings': return 'Settings';
       default: return 'NOVA Showroom';
@@ -262,15 +285,15 @@ export default function Header({
             </div>
             
             <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary/20 transition-all group-hover:border-primary/50 group-active:scale-95 bg-slate-100 flex items-center justify-center">
-              <img 
-                alt="User profile avatar" 
-                className="w-full h-full object-cover" 
+              <img
+                alt="User profile avatar"
+                className="w-full h-full object-cover"
                 src={profileInfo.logoUrl || avatarFallbackUrl}
                 referrerPolicy="no-referrer"
-                onError={(e) => {
-                  const img = e.currentTarget;
-                  if (img.src !== avatarFallbackUrl) {
-                    img.src = avatarFallbackUrl;
+                onError={event => {
+                  const image = event.currentTarget;
+                  if (image.src !== avatarFallbackUrl) {
+                    image.src = avatarFallbackUrl;
                   }
                 }}
               />

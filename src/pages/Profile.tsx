@@ -34,6 +34,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
   
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // default banner image
   const defaultBannerUrl = 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&w=1200&q=80';
@@ -45,11 +46,23 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
       return;
     }
 
-    if (!file.type.startsWith('image/')) {
-      alert('Please choose an image file for the brand logo.');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setSaveError('Choose a JPG, PNG, or WebP image for the brand logo.');
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
       return;
     }
 
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveError('Brand logos must be 5 MB or smaller.');
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setSaveError('');
     setLogoFile(file);
     setLogoUrl(URL.createObjectURL(file));
     if (logoInputRef.current) {
@@ -68,6 +81,22 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaveError('');
+    setIsSaved(false);
+
+    if (!storeName.trim() || !ownerName.trim() || !businessAddress.trim()) {
+      setSaveError('Store name, owner name, and business address are required.');
+      return;
+    }
+    if (!/^[0-9]{10}$/.test(contactDetails.trim())) {
+      setSaveError('Enter a valid 10-digit phone number.');
+      return;
+    }
+    if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstNumber.trim().toUpperCase())) {
+      setSaveError('Enter a valid 15-character GSTIN.');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -87,7 +116,6 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
         await updateVendorProfile(auth.currentUser.uid, profileInfo.vendorId, updatedProfile);
       }
 
-      setIsSaving(false);
       setIsSaved(true);
 
       setProfileInfo(updatedProfile);
@@ -98,10 +126,13 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
         setIsSaved(false);
       }, 2000);
     } catch (err) {
-      setIsSaving(false);
       // eslint-disable-next-line no-console
       console.error('Failed to update vendor profile in Firestore', err);
-      alert('Unable to save vendor profile to Firebase. Please try again.');
+      setSaveError(err instanceof Error
+        ? `Unable to save vendor profile: ${err.message}`
+        : 'Unable to save vendor profile. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -155,7 +186,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                 ref={logoInputRef}
                 id="profileLogo"
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp"
                 onChange={(e) => handleLogoChange(e.target.files)}
                 className="sr-only"
               />
@@ -207,6 +238,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                     type="text" 
                     value={storeName}
                     onChange={e => setStoreName(e.target.value)}
+                    maxLength={100}
                     className="w-full pl-11 pr-4 py-2.5 bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl outline-none text-xs font-semibold text-slate-705 transition-all"
                     required
                   />
@@ -221,6 +253,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                     type="text" 
                     value={ownerName}
                     onChange={e => setOwnerName(e.target.value)}
+                    maxLength={100}
                     className="w-full pl-11 pr-4 py-2.5 bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl outline-none text-xs font-semibold text-slate-705 transition-all"
                     required
                   />
@@ -234,7 +267,12 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                   <input 
                     type="text" 
                     value={gstNumber}
-                    onChange={e => setGstNumber(e.target.value)}
+                    onChange={e => setGstNumber(e.target.value.toUpperCase())}
+                    maxLength={15}
+                    minLength={15}
+                    pattern="[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]"
+                    title="Enter a valid 15-character GSTIN."
+                    required
                     className="w-full pl-11 pr-4 py-2.5 bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl outline-none text-xs font-semibold text-slate-705 transition-all"
                   />
                 </div>
@@ -245,9 +283,13 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                 <div className="relative group">
                   <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 group-focus-within:text-primary transition-colors" />
                   <input 
-                    type="text" 
+                    type="tel"
                     value={contactDetails}
-                    onChange={e => setContactDetails(e.target.value)}
+                    onChange={e => setContactDetails(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    inputMode="numeric"
+                    maxLength={10}
+                    pattern="[0-9]{10}"
+                    title="Enter a valid 10-digit phone number."
                     className="w-full pl-11 pr-4 py-2.5 bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl outline-none text-xs font-semibold text-slate-705 transition-all"
                     required
                   />
@@ -262,6 +304,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                     type="text" 
                     value={businessAddress}
                     onChange={e => setBusinessAddress(e.target.value)}
+                    maxLength={300}
                     className="w-full pl-11 pr-4 py-2.5 bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl outline-none text-xs font-semibold text-slate-705 transition-all"
                     required
                   />
@@ -286,6 +329,12 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
             </div>
           </div>
         </div>
+
+        {saveError && (
+          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {saveError}
+          </div>
+        )}
 
         {/* Global Security partner policy */}
         <div className="bg-slate-900 text-white rounded-2xl p-6 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
