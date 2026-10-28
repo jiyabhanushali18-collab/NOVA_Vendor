@@ -411,7 +411,7 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
     sizes,
     vendorId,
     vendorName,
-    stock,
+    stock: stock ?? (variants?.reduce((sum, v) => sum + (v.stock ?? 0), 0) ?? 0),
     color: primaryColor,
     colors: colors.length ? colors : [primaryColor],
     description: readString(data.description, data.details, data.desc),

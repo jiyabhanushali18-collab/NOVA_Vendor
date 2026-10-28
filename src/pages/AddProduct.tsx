@@ -279,9 +279,12 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
           .filter(Boolean)
       ));
       const primaryColor = variantColors[0] || fallbackColor || 'Default';
-      const enteredProductStock = Number(stock) || 0;
+      // Determine product stock with fallback to at least 1 unit
+      const enteredProductStock = Number(stock);
+      const hasEnteredStock = !isNaN(enteredProductStock) && enteredProductStock > 0;
       const variantStockTotal = variantsWithImages.reduce((total, variant) => total + (variant.stock ?? 0), 0);
-      const totalStock = enteredProductStock || variantStockTotal;
+      let totalStock = hasEnteredStock ? enteredProductStock : variantStockTotal;
+      if (totalStock <= 0) totalStock = 1;
 
       const productPayload = {
         name,
@@ -302,8 +305,15 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
         colors: variantColors.length ? variantColors : [primaryColor],
         description,
         price: Number(price) || 0,
-        originalPrice: typeof originalPrice === 'number' ? originalPrice : undefined,
-        discountedPrice: typeof discountedPrice === 'number' ? discountedPrice : undefined,
+        // If originalPrice is omitted, use the retail price as a fallback.
+        originalPrice:
+          typeof originalPrice === 'number' && originalPrice > 0
+            ? originalPrice
+            : Number(price) || undefined,
+        discountedPrice:
+          typeof discountedPrice === 'number' && discountedPrice > 0
+            ? discountedPrice
+            : undefined,
         stock: totalStock,
         status: totalStock > 10 ? 'In Stock' as const : totalStock > 0 ? 'Low Stock' as const : 'Out of Stock' as const,
         mainImage: primaryImage,

@@ -72,9 +72,10 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && getAfter(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId == vendorId;
       allow update: if signedIn()
-        && resource.data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId == vendorId
+        && (!('uid' in resource.data) || resource.data.uid == request.auth.uid)
         && request.resource.data.uid == request.auth.uid
-        && get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId == vendorId;
+        && request.resource.data.vendorId == vendorId;
       allow delete: if false;
     }
 

@@ -33,7 +33,6 @@ interface OrdersProps {
 
 export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrderStatus, onDeleteOrder, products = [], ordersError = '' }: OrdersProps) {
   const [statusFilter, setStatusFilter] = useState('All Statuses');
-  const [channelFilter, setChannelFilter] = useState('All Channels');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
@@ -275,20 +274,6 @@ export default function Orders({ orders, setOrders, onCreateOrder, onUpdateOrder
               readOnly
             />
           </div>
-        </div>
-
-        <div className="flex-1 min-w-[200px]">
-          <label className="block text-[10px] font-bold text-slate-400 font-display tracking-wider mb-2 uppercase">CHANNEL</label>
-          <select 
-            value={channelFilter}
-            onChange={(e) => setChannelFilter(e.target.value)}
-            className="w-full bg-white/40 border border-primary/10 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary text-xs font-semibold text-slate-600 outline-none cursor-pointer"
-          >
-            <option>All Channels</option>
-            <option>Direct Store</option>
-            <option>Marketplace</option>
-            <option>API Partner</option>
-          </select>
         </div>
 
         {/* Search tool block */}

@@ -76,7 +76,7 @@ const fetchVendorProfile = async (uid: string, email: string): Promise<ProfileIn
         gstNumber: data.gstNumber || '',
         contactDetails: data.contactDetails || data.phoneNumber || '',
         businessAddress: data.businessAddress || data.location || data.address || '',
-        logoUrl: data.logoUrl || '',
+        logoUrl: data.logoUrl || data.logo || data.brandLogoUrl || data.businessLogoUrl || '',
         status: data.status || 'VERIFIED',
         memberSince: data.memberSince || ''
       };
@@ -294,6 +294,7 @@ export default function App() {
     }
   });
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [profileLogoPreviewUrl, setProfileLogoPreviewUrl] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedProductVendor, setSelectedProductVendor] = useState('');
   const [dashboardProductFilters, setDashboardProductFilters] = useState<ProductFilters>({
@@ -983,6 +984,7 @@ export default function App() {
           setActiveTab={handleTabChange} 
           isLoggedIn={isLoggedIn} 
           profileInfo={profileInfo}
+          logoPreviewUrl={profileLogoPreviewUrl}
           onMenuClick={() => setMobileMenuOpen(true)}
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(current => !current)}
@@ -1065,6 +1067,7 @@ export default function App() {
             <Profile 
               profileInfo={profileInfo}
               setProfileInfo={setProfileInfo}
+              onLogoPreviewChange={setProfileLogoPreviewUrl}
             />
           )}
 

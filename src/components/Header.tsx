@@ -13,6 +13,7 @@ interface HeaderProps {
   setActiveTab: (tab: string) => void;
   isLoggedIn: boolean;
   profileInfo: ProfileInfo;
+  logoPreviewUrl: string;
   onMenuClick: () => void;
   darkMode: boolean;
   onToggleDarkMode: () => void;
@@ -34,6 +35,7 @@ export default function Header({
   setActiveTab, 
   isLoggedIn, 
   profileInfo, 
+  logoPreviewUrl,
   onMenuClick,
   darkMode,
   onToggleDarkMode,
@@ -136,6 +138,7 @@ export default function Header({
   if (!isLoggedIn) return null;
 
   const avatarFallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(profileInfo.companyName || profileInfo.storeName || profileInfo.ownerName)}&background=451ebb&color=fff&bold=true`;
+  const profileLogoUrl = logoPreviewUrl || profileInfo.logoUrl.trim() || avatarFallbackUrl;
 
   const getPageTitle = () => {
     switch(activeTab) {
@@ -286,9 +289,9 @@ export default function Header({
             
             <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary/20 transition-all group-hover:border-primary/50 group-active:scale-95 bg-slate-100 flex items-center justify-center">
               <img
-                alt="User profile avatar"
+                alt={`${profileInfo.storeName || 'Vendor'} logo`}
                 className="w-full h-full object-cover"
-                src={profileInfo.logoUrl || avatarFallbackUrl}
+                src={profileLogoUrl}
                 referrerPolicy="no-referrer"
                 onError={event => {
                   const image = event.currentTarget;

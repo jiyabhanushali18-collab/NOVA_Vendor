@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Building, 
   User, 
@@ -9,7 +9,9 @@ import {
   Calendar,
   Sparkles,
   Camera,
-  Layers
+  Layers,
+  Pencil,
+  X
 } from 'lucide-react';
 import { ProfileInfo } from '../types';
 import { auth } from '../firebase';
@@ -19,9 +21,10 @@ import { uploadVendorLogo } from '../utils/imageUtils';
 interface ProfileProps {
   profileInfo: ProfileInfo;
   setProfileInfo: React.Dispatch<React.SetStateAction<ProfileInfo>>;
+  onLogoPreviewChange: (logoUrl: string) => void;
 }
 
-export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
+export default function Profile({ profileInfo, setProfileInfo, onLogoPreviewChange }: ProfileProps) {
   // Local form state mapped precisely to the ProfileInfo type in src/types.ts
   const [storeName, setStoreName] = useState(profileInfo.storeName);
   const [ownerName, setOwnerName] = useState(profileInfo.ownerName);
@@ -33,11 +36,32 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const defaultBannerUrl = '/vendor-profile-banner.png';
 
-  // default banner image
-  const defaultBannerUrl = 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&w=1200&q=80';
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+
+    setStoreName(profileInfo.storeName);
+    setOwnerName(profileInfo.ownerName);
+    setGstNumber(profileInfo.gstNumber);
+    setContactDetails(profileInfo.contactDetails);
+    setBusinessAddress(profileInfo.businessAddress);
+    setLogoUrl(profileInfo.logoUrl);
+    setLogoFile(null);
+  }, [isEditing, profileInfo]);
+
+  useEffect(() => () => {
+    if (logoUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(logoUrl);
+    }
+  }, [logoUrl]);
+
+  useEffect(() => () => onLogoPreviewChange(''), [onLogoPreviewChange]);
+
   const avatarFallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(profileInfo.companyName || profileInfo.storeName || profileInfo.ownerName)}&background=451ebb&color=fff&bold=true`;
 
   const handleLogoChange = (files: FileList | null) => {
@@ -64,7 +88,10 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
 
     setSaveError('');
     setLogoFile(file);
-    setLogoUrl(URL.createObjectURL(file));
+    const previewUrl = URL.createObjectURL(file);
+    setLogoUrl(previewUrl);
+    onLogoPreviewChange(previewUrl);
+    setIsEditing(true);
     if (logoInputRef.current) {
       logoInputRef.current.value = '';
     }
@@ -76,14 +103,16 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
     }
 
     const vendorKey = profileInfo.vendorId || auth.currentUser?.uid || 'vendor';
-    return uploadVendorLogo(logoFile, vendorKey, storeName || profileInfo.companyName);
+    return uploadVendorLogo(logoFile, vendorKey);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaveError('');
-    setIsSaved(false);
 
+    if (!isEditing) {
+      return;
+    }
     if (!storeName.trim() || !ownerName.trim() || !businessAddress.trim()) {
       setSaveError('Store name, owner name, and business address are required.');
       return;
@@ -94,6 +123,12 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
     }
     if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstNumber.trim().toUpperCase())) {
       setSaveError('Enter a valid 15-character GSTIN.');
+      return;
+    }
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setSaveError('Your session has expired. Sign in again before saving your profile.');
       return;
     }
 
@@ -112,19 +147,13 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
         logoUrl: uploadedLogoUrl
       };
 
-      if (auth.currentUser) {
-        await updateVendorProfile(auth.currentUser.uid, profileInfo.vendorId, updatedProfile);
-      }
-
-      setIsSaved(true);
+      await updateVendorProfile(currentUser.uid, profileInfo.vendorId, updatedProfile);
 
       setProfileInfo(updatedProfile);
       setLogoFile(null);
       setLogoUrl(uploadedLogoUrl);
-
-      setTimeout(() => {
-        setIsSaved(false);
-      }, 2000);
+      onLogoPreviewChange('');
+      setIsEditing(false);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to update vendor profile in Firestore', err);
@@ -136,6 +165,12 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
     }
   };
 
+  const handleCancelEdit = () => {
+    setSaveError('');
+    onLogoPreviewChange('');
+    setIsEditing(false);
+  };
+
   return (
     <div className="max-w-[1000px] mx-auto pb-32 select-none font-sans animate-fadeIn">
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -144,20 +179,12 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
         <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm">
           {/* Banner cover */}
           <div className="h-44 w-full relative">
-            <img 
-              alt="Profile banner" 
-              className="w-full h-full object-cover select-none" 
+            <img
+              alt="Clothing rack profile banner"
+              className="w-full h-full object-cover object-[center_55%] select-none"
               src={defaultBannerUrl}
-              referrerPolicy="no-referrer"
             />
             <div className="absolute inset-0 bg-slate-900/10 pointer-events-none" />
-            <button 
-              type="button" 
-              onClick={() => alert("Banner upload is disabled in preview. Recommended layout: 1200x400px")}
-              className="absolute right-4 top-4 p-2.5 bg-white/70 backdrop-blur-md rounded-xl hover:bg-white text-slate-705 transition-colors shadow-sm cursor-pointer border border-slate-200/40"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
           </div>
 
           {/* Profile Image & Meta */}
@@ -176,18 +203,13 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                   }
                 }}
               />
-              <label
-                htmlFor="profileLogo"
-                className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer"
-              >
-                <Camera className="w-5 h-5 text-white" />
-              </label>
               <input
                 ref={logoInputRef}
                 id="profileLogo"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
-                onChange={(e) => handleLogoChange(e.target.files)}
+                onChange={event => handleLogoChange(event.target.files)}
+                disabled={isSaving}
                 className="sr-only"
               />
             </div>
@@ -199,6 +221,16 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span>{profileInfo.status}</span>
                 </span>
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={isSaving}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-[11px] font-bold text-primary transition hover:bg-primary/10 disabled:opacity-50"
+                  aria-label={profileInfo.logoUrl ? 'Change store logo' : 'Add store logo'}
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  {profileInfo.logoUrl ? 'Change logo' : 'Add logo'}
+                </button>
               </div>
               <p className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5" />
@@ -206,18 +238,40 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
               </p>
             </div>
 
-            <button 
-              type="submit" 
-              disabled={isSaving || isSaved}
-              className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-display font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                isSaved 
-                  ? 'bg-emerald-500 shadow-emerald-500/10 text-white' 
-                  : 'bg-primary hover:bg-secondary text-white shadow-primary/10 hover:scale-[1.02] active:scale-[0.98]'
-              }`}
-            >
-              <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Saving...' : isSaved ? 'Saved!' : 'Save Profile'}</span>
-            </button>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              {isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    disabled={isSaving}
+                    className="w-full px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 font-display font-bold text-sm transition hover:bg-slate-50 disabled:opacity-50 sm:w-auto"
+                  >
+                    <span className="flex items-center justify-center gap-2"><X className="w-4 h-4" />Cancel</span>
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="w-full px-6 py-2.5 rounded-xl font-display font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 bg-primary hover:bg-secondary text-white disabled:cursor-wait disabled:opacity-70 sm:w-auto"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isSaving ? 'Saving...' : 'Save Profile'}</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaveError('');
+                    setIsEditing(true);
+                  }}
+                  className="w-full px-6 py-2.5 rounded-xl font-display font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 bg-primary hover:bg-secondary text-white sm:w-auto"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Edit Profile
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -238,6 +292,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                     type="text" 
                     value={storeName}
                     onChange={e => setStoreName(e.target.value)}
+                    disabled={!isEditing || isSaving}
                     maxLength={100}
                     className="w-full pl-11 pr-4 py-2.5 bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl outline-none text-xs font-semibold text-slate-705 transition-all"
                     required
@@ -253,6 +308,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                     type="text" 
                     value={ownerName}
                     onChange={e => setOwnerName(e.target.value)}
+                    disabled={!isEditing || isSaving}
                     maxLength={100}
                     className="w-full pl-11 pr-4 py-2.5 bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl outline-none text-xs font-semibold text-slate-705 transition-all"
                     required
@@ -268,6 +324,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                     type="text" 
                     value={gstNumber}
                     onChange={e => setGstNumber(e.target.value.toUpperCase())}
+                    disabled={!isEditing || isSaving}
                     maxLength={15}
                     minLength={15}
                     pattern="[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]"
@@ -286,6 +343,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                     type="tel"
                     value={contactDetails}
                     onChange={e => setContactDetails(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    disabled={!isEditing || isSaving}
                     inputMode="numeric"
                     maxLength={10}
                     pattern="[0-9]{10}"
@@ -304,6 +362,7 @@ export default function Profile({ profileInfo, setProfileInfo }: ProfileProps) {
                     type="text" 
                     value={businessAddress}
                     onChange={e => setBusinessAddress(e.target.value)}
+                    disabled={!isEditing || isSaving}
                     maxLength={300}
                     className="w-full pl-11 pr-4 py-2.5 bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl outline-none text-xs font-semibold text-slate-705 transition-all"
                     required

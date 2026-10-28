@@ -236,7 +236,7 @@ export default function Login({ onLoginSuccess, authProfileError, onSwitchAccoun
 
         if (logoFile) {
           try {
-            logoUrl = await uploadVendorLogo(logoFile, credential.user.uid, vendorSignupData.companyName);
+            logoUrl = await uploadVendorLogo(logoFile, credential.user.uid);
           } catch (uploadErr) {
             // eslint-disable-next-line no-console
             console.warn('Fallback to UI avatar for logo', uploadErr);

@@ -446,7 +446,6 @@ export default function MarketInsights({ orders, products, profileInfo, setActiv
           { id: 'products', label: 'Top & Viewed Clothes', icon: Package },
           { id: 'tryon', label: 'AR Try-On Insights', icon: Glasses },
           { id: 'funnel', label: 'Discovery Funnel', icon: SlidersHorizontal },
-          { id: 'search', label: 'Search Demand', icon: Search },
           { id: 'wishlist', label: 'Wishlist & Engagement', icon: Heart },
           { id: 'inventory', label: 'Inventory & Demand', icon: AlertTriangle }
         ].map(tab => {

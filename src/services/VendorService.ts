@@ -205,6 +205,7 @@ export const updateVendorProfile = async (
   profile: ProfileInfo
 ) => {
   const updates = {
+    uid,
     storeName: profile.storeName,
     companyName: profile.companyName || profile.storeName,
     ownerName: profile.ownerName,
