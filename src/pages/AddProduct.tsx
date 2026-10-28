@@ -490,8 +490,10 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
               <label className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">AVAILABLE UNITS</label>
               <input 
                 type="number"
-                value={stock || ''}
-                onChange={e => setStock(Number(e.target.value))}
+                min={0}
+                step={1}
+                value={stock}
+                onChange={e => setStock(e.target.value === '' ? 0 : Number(e.target.value))}
                 placeholder="e.g. 50"
                 className="bg-white/40 border border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3 font-medium text-slate-705 outline-none transition-all duration-200 w-full"
               />

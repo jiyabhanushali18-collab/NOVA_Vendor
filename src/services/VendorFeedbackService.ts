@@ -1,4 +1,4 @@
-import { collection, onSnapshot, type Unsubscribe } from 'firebase/firestore';
+import { collection, onSnapshot, type DocumentData, type Unsubscribe } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Product } from '../types';
 
@@ -37,6 +37,42 @@ const readDate = (value: unknown): Date | null => {
   return null;
 };
 
+const normalizeFeedback = (
+  data: DocumentData,
+  id: string,
+  vendorId: string,
+  productsById: Map<string, Product>
+): VendorTryOnFeedback | null => {
+  const productId = readText(data.productId, data.productID, data.product_id);
+  const product = productsById.get(productId);
+  const reviewVendorId = readText(data.vendorId, data.vendorID);
+  const isTryOnFeedback = data.arTryOn === true || data.arRating !== undefined;
+  const ratingValue = data.arRating ?? (data.arTryOn === true ? data.rating ?? data.stars : undefined);
+  const rating = typeof ratingValue === 'number' ? ratingValue : Number(ratingValue);
+
+  if (
+    (!product && reviewVendorId !== vendorId)
+    || (reviewVendorId && vendorId && reviewVendorId !== vendorId)
+    || !isTryOnFeedback
+    || !Number.isInteger(rating)
+    || rating < 1
+    || rating > 5
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    productId,
+    productName: product?.name || readText(data.productName, data.product),
+    rating,
+    comment: readText(data.comment, data.feedback, data.review, data.text),
+    customerName: readText(data.customerName, data.userName, data.author, data.displayName, data.name) || 'NOVA customer',
+    color: readText(data.color, data.variantColor),
+    createdAt: readDate(data.createdAt ?? data.timestamp)
+  };
+};
+
 export const subscribeToVendorTryOnFeedback = (
   vendorId: string,
   products: Product[],
@@ -53,34 +89,13 @@ export const subscribeToVendorTryOnFeedback = (
     collection(db, 'reviews'),
     snapshot => {
       const feedback = snapshot.docs.flatMap(reviewDoc => {
-        const data = reviewDoc.data();
-        const productId = readText(data.productId, data.product);
-        const product = productsById.get(productId);
-        const reviewVendorId = readText(data.vendorId);
-        const ratingValue = data.arRating ?? (data.arTryOn === true ? data.rating : undefined);
-        const rating = typeof ratingValue === 'number' ? ratingValue : Number(ratingValue);
-
-        if (
-          (!product && reviewVendorId !== vendorId)
-          || (reviewVendorId && vendorId && reviewVendorId !== vendorId)
-          || (data.arTryOn !== true && data.arRating === undefined)
-          || !Number.isInteger(rating)
-          || rating < 1
-          || rating > 5
-        ) {
-          return [];
-        }
-
-        return [{
-          id: reviewDoc.id,
-          productId,
-          productName: product?.name || readText(data.productName, data.product),
-          rating,
-          comment: readText(data.comment, data.feedback, data.review),
-          customerName: readText(data.customerName, data.userName, data.author, data.displayName) || 'NOVA customer',
-          color: readText(data.color, data.variantColor),
-          createdAt: readDate(data.createdAt ?? data.timestamp)
-        }];
+        const review = normalizeFeedback(
+          reviewDoc.data(),
+          reviewDoc.id,
+          vendorId,
+          productsById
+        );
+        return review ? [review] : [];
       });
 
       feedback.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));

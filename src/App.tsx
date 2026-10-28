@@ -615,6 +615,7 @@ export default function App() {
     }
     addingProductRef.current = true;
 
+    const stock = Number.isFinite(newProd.stock) ? Math.max(0, Math.trunc(newProd.stock)) : 0;
     const vendorId = profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO';
     const vendorName = profileInfo.companyName || profileInfo.storeName;
     const normalizeProductField = (value: string | undefined) =>
@@ -639,7 +640,7 @@ export default function App() {
       try {
         const { doc, runTransaction, serverTimestamp } = await import('firebase/firestore');
         const productRefs = matchingProducts.map(product => doc(db, 'products', product.id));
-        const increment = Math.max(0, Number(newProd.stock) || 0);
+        const increment = stock;
         const updatedProduct = await runTransaction(db, async transaction => {
           const snapshots = await Promise.all(productRefs.map(productRef => transaction.get(productRef)));
           const existingSnapshots = snapshots.filter(snapshot => snapshot.exists());
@@ -696,6 +697,7 @@ export default function App() {
     const id = newProd.name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(Math.random() * 100);
     const completedProduct: Product = {
       ...newProd,
+      stock,
       id,
       vendorId,
       vendorName,
@@ -729,6 +731,8 @@ export default function App() {
       const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
       const productDocument = removeUndefinedFields({
         ...newProd,
+        stock,
+        stockQuantity: stock,
         sizes: [],
         vendorId,
         vendorName,
@@ -785,6 +789,8 @@ export default function App() {
       const { id, createdAt, updatedAt, reviews, rating, ratingCount, arTryOnRating, arTryOnRatingCount, ...productData } = updatedProd;
       const productDocument = removeUndefinedFields({
         ...productData,
+        stock: Math.max(0, Math.trunc(updatedProd.stock)),
+        stockQuantity: Math.max(0, Math.trunc(updatedProd.stock)),
         sizes: [],
         vendorId: updatedProd.vendorId || profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO',
         vendorName: updatedProd.vendorName || profileInfo.companyName || profileInfo.storeName,

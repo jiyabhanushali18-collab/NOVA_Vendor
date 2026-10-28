@@ -344,13 +344,18 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
   const discountedPriceRaw = data.discountedPrice ?? data.DiscountedPrice ?? data.salePrice;
   const discountedPrice = discountedPriceRaw !== undefined ? readNumber(discountedPriceRaw) : undefined;
 
-  // Stock resolution (handle stockQuantity, stock, inventory, quantity)
+  // Stock resolution supports legacy product records created by the NOVA app.
   const stock = readNumber(
     data.stock,
+    data.Stock,
     data.stockQuantity,
     data.StockQuantity,
+    data.stock_quantity,
     data.inventory,
+    data.inventoryCount,
     data.availableStock,
+    data.availableQuantity,
+    data.quantityAvailable,
     data.quantity,
     data.qty
   );

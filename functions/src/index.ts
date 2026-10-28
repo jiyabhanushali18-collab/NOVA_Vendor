@@ -136,9 +136,15 @@ const productPrice = (product: Record<string, unknown>) =>
 
 const productStock = (product: Record<string, unknown>) =>
   parseProductPrice(product.stock)
+  ?? parseProductPrice(product.Stock)
   ?? parseProductPrice(product.stockQuantity)
+  ?? parseProductPrice(product.StockQuantity)
+  ?? parseProductPrice(product.stock_quantity)
   ?? parseProductPrice(product.inventory)
+  ?? parseProductPrice(product.inventoryCount)
   ?? parseProductPrice(product.availableStock)
+  ?? parseProductPrice(product.availableQuantity)
+  ?? parseProductPrice(product.quantityAvailable)
   ?? parseProductPrice(product.quantity)
   ?? parseProductPrice(product.qty);
 
@@ -187,7 +193,8 @@ export const placeCustomerOrder = onCall(async request => {
 
       if (!vendorId || !name || unitPrice === undefined || unitPrice < 0
         || ['deleted', 'archived', 'inactive', 'disabled', 'out of stock'].includes(status || '')
-        || (stock !== undefined && stock < item.quantity)) {
+        || stock === undefined
+        || stock < item.quantity) {
         throw new HttpsError('failed-precondition', `${name || 'A product'} is not currently available in the requested quantity.`);
       }
 
@@ -252,9 +259,11 @@ export const placeCustomerOrder = onCall(async request => {
       const product = productSnapshots[index].data() || {};
       const stock = productStock(product);
       if (stock !== undefined) {
+        const remainingStock = Math.max(0, stock - item.quantity);
         transaction.update(productRefs[index], {
-          stock: Math.max(0, stock - item.quantity),
-          stockQuantity: Math.max(0, stock - item.quantity),
+          stock: remainingStock,
+          stockQuantity: remainingStock,
+          status: remainingStock > 0 ? 'active' : 'out_of_stock',
           updatedAt: FieldValue.serverTimestamp()
         });
       }
