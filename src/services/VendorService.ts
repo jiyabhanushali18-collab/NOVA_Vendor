@@ -189,10 +189,10 @@ export const createVendorProfile = async (
       updatedAt: serverTimestamp()
     };
 
-    await Promise.all([
-      setDoc(doc(db, 'owner', uid), firestoreRecord, { merge: true }),
-      setDoc(doc(db, 'vendors', vendorId), firestoreRecord, { merge: true })
-    ]);
+    await runTransaction(db, async transaction => {
+      transaction.set(doc(db, 'owner', uid), firestoreRecord, { merge: true });
+      transaction.set(doc(db, 'vendors', vendorId), firestoreRecord, { merge: true });
+    });
 
     saveLocalVendorProfile(uid, profile);
     return profile;

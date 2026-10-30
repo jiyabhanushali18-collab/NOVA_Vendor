@@ -23,6 +23,7 @@ interface ProductsProps {
   setActiveTab: (tab: string) => void;
   onEditProduct?: (product: Product) => void;
   onDeleteProduct?: (productId: string) => Promise<void>;
+  canManageProducts: boolean;
   selectedVendor?: string;
   initialFilters?: ProductFilters;
 }
@@ -44,7 +45,7 @@ const ALL_CLOTHING_CATEGORIES = [
   'Accessories'
 ];
 
-export default function Products({ products, profileInfo, isLoading = false, setProducts, setActiveTab, onEditProduct, onDeleteProduct, selectedVendor = '', initialFilters }: ProductsProps) {
+export default function Products({ products, profileInfo, isLoading = false, setProducts, setActiveTab, onEditProduct, onDeleteProduct, canManageProducts, selectedVendor = '', initialFilters }: ProductsProps) {
   const [selectedCategory, setSelectedCategory] = useState(initialFilters?.category || 'All Categories');
   const [selectedStatus, setSelectedStatus] = useState(initialFilters?.status || 'Status: All');
   const [searchQuery, setSearchQuery] = useState(initialFilters?.search || '');
@@ -69,6 +70,13 @@ export default function Products({ products, profileInfo, isLoading = false, set
     });
     return Array.from(set).sort();
   }, [products]);
+
+  const vendorStoreId = profileInfo?.vendorId?.trim();
+  const vendorStoreName = (profileInfo?.companyName || profileInfo?.storeName || '').trim().toLowerCase();
+  const selectedVendorName = selectedVendor.trim().toLowerCase();
+  const canAddProductToView = canManageProducts
+    && selectedVendor !== 'all'
+    && (!selectedVendor || selectedVendorName === vendorStoreName);
 
   // Filter items reactively
   const filteredProducts = products.filter(product => {
@@ -96,18 +104,11 @@ export default function Products({ products, profileInfo, isLoading = false, set
       product.category.toLowerCase().includes(lowerSearch) ||
       product.sku?.toLowerCase().includes(lowerSearch);
 
-    // Vendor store check
-    const vendorStoreId = profileInfo?.vendorId?.trim();
-    const vendorStoreName = (profileInfo?.companyName || profileInfo?.storeName || '').trim().toLowerCase();
-    const selectedVendorName = selectedVendor.trim().toLowerCase();
-    const matchesSelectedVendor = selectedVendor === 'all'
-      || product.vendorName?.trim().toLowerCase() === selectedVendorName
-      || (!product.vendorName?.trim() && vendorStoreName === selectedVendorName);
-    const matchesStore = selectedVendor
-      ? matchesSelectedVendor
-      : !vendorStoreId && !vendorStoreName ||
-        (vendorStoreId ? product.vendorId === vendorStoreId : false) ||
-        (vendorStoreName ? product.vendorName?.trim().toLowerCase() === vendorStoreName : false);
+    const matchesStore = selectedVendor === 'all'
+      || (selectedVendor
+        ? selectedVendorName === product.vendorName?.trim().toLowerCase()
+          || selectedVendor === product.vendorId
+        : Boolean(vendorStoreId && product.vendorId === vendorStoreId));
 
     return matchesCategory && matchesStatus && matchesSearch && matchesStore;
   });
@@ -194,13 +195,15 @@ export default function Products({ products, profileInfo, isLoading = false, set
         </div>
 
         {/* Add product button triggers react action context */}
-        <button 
-          onClick={() => setActiveTab('addProduct')}
-          className="bg-gradient-to-r from-primary to-secondary text-white flex items-center gap-2 px-6 py-3 rounded-xl font-display font-bold text-sm hover:shadow-lg hover:shadow-primary/20 active:scale-95 transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Product</span>
-        </button>
+        {canAddProductToView && (
+          <button
+            onClick={() => setActiveTab('addProduct')}
+            className="bg-gradient-to-r from-primary to-secondary text-white flex items-center gap-2 px-6 py-3 rounded-xl font-display font-bold text-sm hover:shadow-lg hover:shadow-primary/20 active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Product</span>
+          </button>
+        )}
       </div>
 
       {/* Products table list card */}
@@ -226,7 +229,11 @@ export default function Products({ products, profileInfo, isLoading = false, set
                     </td>
                   </tr>
                 ) : paginatedProducts.length > 0 ? (
-                  paginatedProducts.map((product) => (
+                  paginatedProducts.map(product => {
+                    const canManageProduct = canManageProducts
+                      && Boolean(vendorStoreId)
+                      && product.vendorId === vendorStoreId;
+                    return (
                     <motion.tr 
                       key={product.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -295,6 +302,7 @@ export default function Products({ products, profileInfo, isLoading = false, set
 
                       {/* Stateful delete/edit buttons */}
                       <td className="p-5 text-right">
+                        {canManageProduct && (
                         <div className="flex justify-end gap-1.5 md:opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                           <button 
                             type="button"
@@ -319,9 +327,11 @@ export default function Products({ products, profileInfo, isLoading = false, set
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
+                        )}
                       </td>
                     </motion.tr>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={6} className="p-10 text-center text-slate-400 font-medium">

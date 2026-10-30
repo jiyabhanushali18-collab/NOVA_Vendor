@@ -1,4 +1,4 @@
-import { collection, onSnapshot, type DocumentData, type Unsubscribe } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, type DocumentData, type Unsubscribe } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Product } from '../types';
 
@@ -46,8 +46,8 @@ const normalizeFeedback = (
   const productId = readText(data.productId, data.productID, data.product_id);
   const product = productsById.get(productId);
   const reviewVendorId = readText(data.vendorId, data.vendorID);
-  const isTryOnFeedback = data.arTryOn === true || data.arRating !== undefined;
-  const ratingValue = data.arRating ?? (data.arTryOn === true ? data.rating ?? data.stars : undefined);
+  const isTryOnFeedback = data.arTryOn === true || data.arRating !== undefined || data.source === 'tryon';
+  const ratingValue = data.arRating ?? data.rating ?? data.stars;
   const rating = typeof ratingValue === 'number' ? ratingValue : Number(ratingValue);
 
   if (
@@ -81,26 +81,46 @@ export const subscribeToVendorTryOnFeedback = (
 ): Unsubscribe => {
   const productsById = new Map(
     products
-      .filter(product => !vendorId || !product.vendorId || product.vendorId === vendorId)
+      .filter(product => product.vendorId === vendorId)
       .map(product => [product.id, product])
   );
 
-  return onSnapshot(
-    collection(db, 'reviews'),
-    snapshot => {
-      const feedback = snapshot.docs.flatMap(reviewDoc => {
-        const review = normalizeFeedback(
-          reviewDoc.data(),
-          reviewDoc.id,
-          vendorId,
-          productsById
-        );
-        return review ? [review] : [];
-      });
+  if (!vendorId) {
+    onFeedback([]);
+    return () => {};
+  }
 
-      feedback.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
-      onFeedback(feedback);
-    },
-    error => onError(error)
+  const snapshots = new Map<string, Map<string, VendorTryOnFeedback>>();
+  const publish = () => {
+    const unique = new Map<string, VendorTryOnFeedback>();
+    snapshots.forEach(items => items.forEach((item, id) => unique.set(id, item)));
+    const feedback = Array.from(unique.values())
+      .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+    onFeedback(feedback);
+  };
+  const handleSnapshot = (source: string) => (snapshot: any) => {
+    const items = new Map<string, VendorTryOnFeedback>();
+    snapshot.docs.forEach((reviewDoc: any) => {
+      const review = normalizeFeedback(reviewDoc.data(), reviewDoc.id, vendorId, productsById);
+      if (review) items.set(review.id, review);
+    });
+    snapshots.set(source, items);
+    publish();
+  };
+  const handleError = (error: Error) => onError(error);
+  const liveUnsubscribe = onSnapshot(
+    query(collection(db, 'reviews'), where('vendorId', '==', vendorId)),
+    handleSnapshot('reviews'),
+    handleError
   );
+  const legacyUnsubscribe = onSnapshot(
+    query(collection(db, 'product_reviews'), where('vendorId', '==', vendorId)),
+    handleSnapshot('product_reviews'),
+    handleError
+  );
+
+  return () => {
+    liveUnsubscribe();
+    legacyUnsubscribe();
+  };
 };

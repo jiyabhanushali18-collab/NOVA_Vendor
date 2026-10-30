@@ -16,9 +16,10 @@ interface SidebarProps {
   setActiveTab: (tab: string) => void;
   isLoggedIn: boolean;
   onLogout: () => void;
+  canAddProduct: boolean;
 }
 
-export default function Sidebar({ activeTab, setActiveTab, isLoggedIn, onLogout }: SidebarProps) {
+export default function Sidebar({ activeTab, setActiveTab, isLoggedIn, onLogout, canAddProduct }: SidebarProps) {
   if (!isLoggedIn) return null;
 
   const menuItems = [
@@ -30,7 +31,7 @@ export default function Sidebar({ activeTab, setActiveTab, isLoggedIn, onLogout 
     { id: 'marketInsights', label: 'Market Insights', icon: Sparkles },
     { id: 'feedback', label: 'Try-On Feedback', icon: MessageSquareText },
     { id: 'profile', label: 'Profile', icon: UserCircle },
-  ];
+  ].filter(item => item.id !== 'addProduct' || canAddProduct);
 
   return (
     <aside id="nav-sidebar" className="hidden md:flex h-screen w-72 fixed left-0 top-0 rounded-r-xl bg-slate-50/70 backdrop-blur-2xl border-r border-white/50 shadow-[20px_0_40px_rgba(46,16,101,0.04)] flex flex-col p-8 gap-2 z-50">

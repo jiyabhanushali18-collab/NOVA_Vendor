@@ -30,6 +30,7 @@ interface DashboardProps {
   activities: Activity[];
   profileInfo: ProfileInfo;
   setActiveTab: (tab: string) => void;
+  canAddProduct: boolean;
   onSelectVendor: (vendor: string) => void;
   onApplyProductFilters: (filters: ProductFilters) => void;
 }
@@ -40,6 +41,7 @@ export default function Dashboard({
   activities, 
   profileInfo, 
   setActiveTab,
+  canAddProduct,
   onSelectVendor,
   onApplyProductFilters
 }: DashboardProps) {
@@ -122,20 +124,22 @@ export default function Dashboard({
           </p>
         </div>
         <div className="flex gap-4 w-full sm:w-auto">
-          <button 
+          <button
             onClick={() => setActiveTab('orders')}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-100 transition-all duration-200 cursor-pointer text-sm"
           >
             <ShoppingCart className="w-4 h-4 text-slate-500" />
             <span>View Orders</span>
           </button>
-          <button 
-            onClick={() => setActiveTab('addProduct')}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold shadow-md shadow-primary/20 hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer text-sm"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Add Product</span>
-          </button>
+          {canAddProduct && (
+            <button
+              onClick={() => setActiveTab('addProduct')}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold shadow-md shadow-primary/20 hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer text-sm"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Add Product</span>
+            </button>
+          )}
         </div>
       </section>
 

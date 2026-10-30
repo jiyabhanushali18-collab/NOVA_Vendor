@@ -23,7 +23,7 @@ import { getLocalVendorProfile, saveLocalVendorProfile } from './services/Vendor
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-const fetchVendorProfile = async (uid: string, email: string): Promise<ProfileInfo | null> => {
+const fetchVendorProfile = async (uid: string): Promise<ProfileInfo | null> => {
   try {
     const { collection, doc, getDoc, getDocs, query, where } = await import('firebase/firestore');
     let data: any = null;
@@ -50,23 +50,6 @@ const fetchVendorProfile = async (uid: string, email: string): Promise<ProfileIn
       }
     }
 
-    if (!data?.vendorId && email) {
-      try {
-        const vendorSnapshot = await getDocs(collection(db, 'vendors'));
-        const normalizedEmail = email.trim().toLowerCase();
-        const matchingVendor = vendorSnapshot.docs.find(snapshot =>
-          typeof snapshot.data().email === 'string'
-          && snapshot.data().email.trim().toLowerCase() === normalizedEmail
-        );
-        if (matchingVendor) {
-          data = matchingVendor.data();
-        }
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('Could not query vendors by email:', e);
-      }
-    }
-
     if (data) {
       const profile: ProfileInfo = {
         storeName: data.companyName || data.storeName || '',
@@ -88,13 +71,11 @@ const fetchVendorProfile = async (uid: string, email: string): Promise<ProfileIn
     console.warn('Error fetching vendor profile from Firestore:', err);
   }
 
-  const cached = getLocalVendorProfile(uid, email);
-  if (cached) {
-    return cached;
-  }
-
   return null;
 };
+
+const isValidVendorId = (vendorId?: string) =>
+  Boolean(vendorId && /^VEN\d{3}$/.test(vendorId.trim()));
 
 const readNumber = (...values: unknown[]) => {
   for (const value of values) {
@@ -227,7 +208,7 @@ const productDocumentToProduct = (product: ProductDocument): Product => {
   const colors = Array.from(new Set([...(product.colors || []), ...variantColors].filter(Boolean)));
   const primaryColor = readString(product.color) || colors[0] || 'Default';
   const stockFromVariants = variants?.reduce((total, variant) => total + (variant.stock ?? 0), 0) || 0;
-  const stock = product.stock || stockFromVariants;
+  const stock = product.stock ?? stockFromVariants;
 
   return {
     id: product.id,
@@ -285,6 +266,7 @@ const removeUndefinedFields = <T,>(value: T): T => {
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [canManageProducts, setCanManageProducts] = useState(false);
   const [authProfileError, setAuthProfileError] = useState('');
   const [darkMode, setDarkMode] = useState(() => {
     try {
@@ -323,53 +305,32 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setIsLoggedIn(false);
+      setCanManageProducts(false);
       setAuthProfileError('');
 
       if (user) {
         try {
-          let vendorProfile = await fetchVendorProfile(user.uid, user.email || '');
+          const vendorProfile = await fetchVendorProfile(user.uid);
+          const vendorOwnershipConfirmed = isValidVendorId(vendorProfile?.vendorId);
           if (auth.currentUser?.uid !== user.uid) {
             return;
           }
 
-          if (!vendorProfile) {
-            const localFallback = getLocalVendorProfile(user.uid, user.email || '');
-            if (localFallback) {
-              vendorProfile = localFallback;
-            } else {
-              const fallbackDisplayName = user.displayName || user.email?.split('@')[0] || 'Vendor';
-              const nextVendorId = `VEN${(Date.now() % 900) + 100}`;
-              vendorProfile = {
-                storeName: fallbackDisplayName,
-                companyName: fallbackDisplayName,
-                vendorId: nextVendorId,
-                ownerName: fallbackDisplayName,
-                gstNumber: '',
-                contactDetails: user.phoneNumber || '',
-                businessAddress: '',
-                logoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackDisplayName)}&background=451ebb&color=fff&bold=true`,
-                status: 'VERIFIED',
-                memberSince: new Date().toLocaleString('en-US', { month: 'short', year: 'numeric' })
-              };
-
-              try {
-                const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
-                await setDoc(doc(db, 'owner', user.uid), {
-                  ...vendorProfile,
-                  uid: user.uid,
-                  email: user.email || '',
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp()
-                }, { merge: true });
-              } catch (writeErr) {
-                // eslint-disable-next-line no-console
-                console.warn('Could not save baseline owner doc', writeErr);
-              }
-              saveLocalVendorProfile(user.uid, vendorProfile);
-            }
-          }
-
-          setProfileInfo(vendorProfile);
+          const profileToDisplay = vendorProfile
+            || getLocalVendorProfile(user.uid, user.email || '')
+            || {
+              storeName: user.displayName || user.email?.split('@')[0] || 'Vendor',
+              companyName: user.displayName || user.email?.split('@')[0] || 'Vendor',
+              ownerName: user.displayName || user.email?.split('@')[0] || 'Vendor',
+              gstNumber: '',
+              contactDetails: user.phoneNumber || '',
+              businessAddress: '',
+              logoUrl: '',
+              status: 'UNLINKED',
+              memberSince: ''
+            };
+          setCanManageProducts(vendorOwnershipConfirmed);
+          setProfileInfo(profileToDisplay);
           setIsLoggedIn(true);
         } catch (err) {
           if (auth.currentUser?.uid !== user.uid) {
@@ -405,31 +366,10 @@ export default function App() {
   const pendingProductsRef = useRef<Product[]>([]);
   const addingProductRef = useRef(false);
 
-  const matchesCurrentStore = (product: Product) => {
-    const currentVendorId = profileInfo.vendorId?.trim();
-    const currentVendorName = (profileInfo.companyName || profileInfo.storeName || '').trim().toLowerCase();
-
-    if (currentVendorId && product.vendorId === currentVendorId) {
-      return true;
-    }
-
-    if (currentVendorName && product.vendorName?.trim().toLowerCase() === currentVendorName) {
-      return true;
-    }
-
-    // Support VEN001 partner store aliases (Fashion Fushion / Trendy Threads)
-    if (currentVendorId === 'VEN001' || currentVendorName.includes('fashion') || currentVendorName.includes('trendy')) {
-      return product.vendorId === 'VEN001' ||
-             product.vendorName?.toLowerCase() === 'fashion fushion' ||
-             product.vendorName?.toLowerCase() === 'trendy threads';
-    }
-
-    if (!currentVendorId && !currentVendorName) {
-      return true;
-    }
-
-    return false;
-  };
+  const isCurrentVendorView = !selectedProductVendor
+    || selectedProductVendor.trim().toLowerCase()
+      === (profileInfo.companyName || profileInfo.storeName || '').trim().toLowerCase();
+  const canAddProductToCurrentView = canManageProducts && isCurrentVendorView;
 
   // State to support editing products within AddProduct screen
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -446,8 +386,7 @@ export default function App() {
     const unsubscribe = subscribeToProducts(
       firestoreProducts => {
         const mappedProducts = firestoreProducts
-          .map(productDocumentToProduct)
-          .filter(matchesCurrentStore);
+          .map(productDocumentToProduct);
         const pendingProducts = pendingProductsRef.current.filter(pendingProduct =>
           !mappedProducts.some(product => product.id === pendingProduct.id)
         );
@@ -464,7 +403,7 @@ export default function App() {
     );
 
     return unsubscribe;
-  }, [isLoggedIn, profileInfo]);
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -519,16 +458,16 @@ export default function App() {
 
   // Realtime reviews listener — keeps product ratings & reviews in sync
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || !profileInfo.vendorId) return;
 
     let unsubscribe: (() => void) | undefined;
 
     const listenReviews = async () => {
       try {
-        const { collection, onSnapshot } = await import('firebase/firestore');
+        const { collection, onSnapshot, query, where } = await import('firebase/firestore');
         const { db } = await import('./firebase');
 
-        const reviewsCol = collection(db, 'reviews');
+        const reviewsCol = query(collection(db, 'reviews'), where('vendorId', '==', profileInfo.vendorId));
         unsubscribe = onSnapshot(reviewsCol, (snapshot) => {
           const byProduct: Record<string, any[]> = {};
           snapshot.docs.forEach(doc => {
@@ -565,16 +504,26 @@ export default function App() {
     listenReviews();
 
     return () => unsubscribe && unsubscribe();
-  }, [isLoggedIn]);
+  }, [isLoggedIn, profileInfo.vendorId]);
 
-  const handleLoginSuccess = (email: string, profile?: ProfileInfo) => {
+  const handleLoginSuccess = async (email: string, profile?: ProfileInfo) => {
     if (profile) {
       setProfileInfo(profile);
       saveLocalVendorProfile(auth.currentUser?.uid || '', profile);
     }
 
+    setCanManageProducts(false);
     setAuthProfileError('');
     setIsLoggedIn(true);
+    const userId = auth.currentUser?.uid;
+    if (userId) {
+      const linkedProfile = await fetchVendorProfile(userId);
+      if (auth.currentUser?.uid === userId && linkedProfile) {
+        setProfileInfo(linkedProfile);
+        setCanManageProducts(isValidVendorId(linkedProfile.vendorId));
+      }
+    }
+
     // Add dynamic activity indicating login
     setActivities(prev => [
       {
@@ -589,6 +538,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    setCanManageProducts(false);
     try {
       await signOut(auth);
     } catch (err) {
@@ -600,6 +550,7 @@ export default function App() {
   };
 
   const handleSwitchAccount = async () => {
+    setCanManageProducts(false);
     try {
       await signOut(auth);
       setAuthProfileError('');
@@ -614,161 +565,181 @@ export default function App() {
     if (addingProductRef.current) {
       return;
     }
+    if (!canAddProductToCurrentView) {
+      throw new Error('Your account is not linked to a vendor company. Contact support to verify your vendor profile.');
+    }
     addingProductRef.current = true;
 
-    const stock = Number.isFinite(newProd.stock) ? Math.max(0, Math.trunc(newProd.stock)) : 0;
-    const vendorId = profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO';
-    const vendorName = profileInfo.companyName || profileInfo.storeName;
-    const normalizeProductField = (value: string | undefined) =>
-      (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    const productColors = (product: Pick<Product, 'color' | 'colors'>) =>
-      (product.colors?.length ? product.colors : [product.color])
-        .map(color => normalizeProductField(color))
-        .filter(Boolean)
-        .sort()
-        .join('|');
-    const matchingProducts = products.filter(product =>
-      normalizeProductField(product.name) === normalizeProductField(newProd.name)
-      && normalizeProductField(product.brand) === normalizeProductField(newProd.brand)
-      && normalizeProductField(product.category) === normalizeProductField(newProd.category)
-      && productColors(product) === productColors(newProd)
-      && (product.vendorId === vendorId
-        || normalizeProductField(product.vendorName) === normalizeProductField(vendorName))
-    );
-
-    if (matchingProducts.length > 0) {
-      const [matchingProduct, ...duplicateProducts] = matchingProducts;
-      try {
-        const { doc, runTransaction, serverTimestamp } = await import('firebase/firestore');
-        const productRefs = matchingProducts.map(product => doc(db, 'products', product.id));
-        const increment = stock;
-        const updatedProduct = await runTransaction(db, async transaction => {
-          const snapshots = await Promise.all(productRefs.map(productRef => transaction.get(productRef)));
-          const existingSnapshots = snapshots.filter(snapshot => snapshot.exists());
-          if (existingSnapshots.length === 0) {
-            throw new Error('The existing product could not be found. Refresh the catalog and try again.');
-          }
-          const currentStock = existingSnapshots.reduce((total, snapshot) => {
-            const data = snapshot.data();
-            return total + (Number(data.stock ?? data.stockQuantity) || 0);
-          }, 0);
-          const nextStock = currentStock + increment;
-          const status: Product['status'] = nextStock > 10 ? 'In Stock' : nextStock > 0 ? 'Low Stock' : 'Out of Stock';
-          transaction.update(existingSnapshots[0].ref, {
-            stock: nextStock,
-            stockQuantity: nextStock,
-            status,
-            updatedAt: serverTimestamp()
-          });
-          existingSnapshots.slice(1).forEach(snapshot => transaction.delete(snapshot.ref));
-          return {
-            productId: existingSnapshots[0].id,
-            stock: nextStock,
-            status,
-            updatedAt: new Date().toISOString()
-          };
-        });
-
-        const primaryProduct = matchingProducts.find(product => product.id === updatedProduct.productId) || matchingProduct;
-        const mergedProduct = { ...primaryProduct, ...updatedProduct };
-        const duplicateIds = new Set(matchingProducts
-          .filter(product => product.id !== updatedProduct.productId)
-          .map(product => product.id));
-        setProducts(previous => [
-          mergedProduct,
-          ...previous.filter(product => product.id !== updatedProduct.productId && !duplicateIds.has(product.id))
-        ]);
-        setActivities(previous => [{
-          id: 'stock-' + Date.now(),
-          type: 'inventory',
-          title: 'Product Stock Updated',
-          description: `${newProd.name} stock increased by ${increment} units${duplicateProducts.length ? `; merged ${duplicateProducts.length} duplicate listing${duplicateProducts.length === 1 ? '' : 's'}` : ''}`,
-          time: 'Just now'
-        }, ...previous]);
-        return;
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to add stock to existing product', err);
-        throw err;
-      } finally {
-        addingProductRef.current = false;
-      }
-    }
-
-    const id = newProd.name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(Math.random() * 100);
-    const completedProduct: Product = {
-      ...newProd,
-      stock,
-      id,
-      vendorId,
-      vendorName,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      rating: newProd.rating ?? 0,
-      ratingCount: newProd.ratingCount ?? 0,
-      arTryOnRating: newProd.arTryOnRating ?? 0,
-      arTryOnRatingCount: newProd.arTryOnRatingCount ?? 0,
-      reviews: newProd.reviews ?? []
-    };
-    
-    // Add to list immediately for UI responsiveness
-    pendingProductsRef.current = [completedProduct, ...pendingProductsRef.current];
-    setProducts(prev => [completedProduct, ...prev]);
-
-    // Create activity
-    setActivities(prev => [
-      {
-        id: 'prod-' + Date.now(),
-        type: 'inventory',
-        title: 'New Product Added',
-        description: `${newProd.brand} ${newProd.name} (${newProd.stock} Units Added)`,
-        time: 'Just now'
-      },
-      ...prev
-    ]);
-
-    // Inject vendor metadata and save new product to Firestore using current logged-in vendor
     try {
-      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
-      const productDocument = removeUndefinedFields({
+      const currentUserId = auth.currentUser?.uid;
+      if (!currentUserId) {
+        throw new Error('Please sign in with a vendor account before adding products.');
+      }
+
+      const vendorProfile = profileInfo;
+      if (!isValidVendorId(vendorProfile.vendorId)) {
+        throw new Error('Your account is not linked to a verified vendor company.');
+      }
+      const stock = Number.isFinite(newProd.stock) ? Math.max(0, Math.trunc(newProd.stock)) : 0;
+      const vendorId = vendorProfile.vendorId;
+      const vendorName = vendorProfile.companyName || vendorProfile.storeName;
+
+      const normalizeProductField = (value: string | undefined) =>
+        (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const productColors = (product: Pick<Product, 'color' | 'colors'>) =>
+        (product.colors?.length ? product.colors : [product.color])
+          .map(color => normalizeProductField(color))
+          .filter(Boolean)
+          .sort()
+          .join('|');
+      const matchingProducts = products.filter(product =>
+        normalizeProductField(product.name) === normalizeProductField(newProd.name)
+        && normalizeProductField(product.brand) === normalizeProductField(newProd.brand)
+        && normalizeProductField(product.category) === normalizeProductField(newProd.category)
+        && productColors(product) === productColors(newProd)
+        && product.vendorId === vendorId
+      );
+
+      if (matchingProducts.length > 0) {
+        const [matchingProduct, ...duplicateProducts] = matchingProducts;
+        try {
+          const { doc, runTransaction, serverTimestamp } = await import('firebase/firestore');
+          const productRefs = matchingProducts.map(product => doc(db, 'products', product.id));
+          const increment = stock;
+          const updatedProduct = await runTransaction(db, async transaction => {
+            const snapshots = await Promise.all(productRefs.map(productRef => transaction.get(productRef)));
+            const existingSnapshots = snapshots.filter(snapshot => snapshot.exists());
+            if (existingSnapshots.length === 0) {
+              throw new Error('The existing product could not be found. Refresh the catalog and try again.');
+            }
+            const currentStock = existingSnapshots.reduce((total, snapshot) => {
+              const data = snapshot.data();
+              return total + (Number(data.stock ?? data.stockQuantity) || 0);
+            }, 0);
+            const nextStock = currentStock + increment;
+            const status: Product['status'] = nextStock > 10 ? 'In Stock' : nextStock > 0 ? 'Low Stock' : 'Out of Stock';
+            transaction.update(existingSnapshots[0].ref, {
+              stock: nextStock,
+              stockQuantity: nextStock,
+              status,
+              updatedAt: serverTimestamp()
+            });
+            existingSnapshots.slice(1).forEach(snapshot => transaction.delete(snapshot.ref));
+            return {
+              productId: existingSnapshots[0].id,
+              stock: nextStock,
+              status,
+              updatedAt: new Date().toISOString()
+            };
+          });
+
+          const primaryProduct = matchingProducts.find(product => product.id === updatedProduct.productId) || matchingProduct;
+          const mergedProduct = { ...primaryProduct, ...updatedProduct };
+          const duplicateIds = new Set(matchingProducts
+            .filter(product => product.id !== updatedProduct.productId)
+            .map(product => product.id));
+          setProducts(previous => [
+            mergedProduct,
+            ...previous.filter(product => product.id !== updatedProduct.productId && !duplicateIds.has(product.id))
+          ]);
+          setActivities(previous => [{
+            id: 'stock-' + Date.now(),
+            type: 'inventory',
+            title: 'Product Stock Updated',
+            description: `${newProd.name} stock increased by ${increment} units${duplicateProducts.length ? `; merged ${duplicateProducts.length} duplicate listing${duplicateProducts.length === 1 ? '' : 's'}` : ''}`,
+            time: 'Just now'
+          }, ...previous]);
+          return;
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error('Failed to add stock to existing product', err);
+          throw err;
+        } finally {
+          addingProductRef.current = false;
+        }
+      }
+
+      const id = newProd.name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(Math.random() * 100);
+      const completedProduct: Product = {
         ...newProd,
         stock,
-        stockQuantity: stock,
-        sizes: [],
+        id,
         vendorId,
         vendorName,
-        ownerName: profileInfo.ownerName,
-        vendorLocation: profileInfo.businessAddress,
-        vendorPhone: profileInfo.contactDetails,
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-
-      const docRef = await addDoc(collection(db, 'products'), productDocument);
-      const savedProduct = {
-        ...completedProduct,
-        id: docRef.id
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        rating: newProd.rating ?? 0,
+        ratingCount: newProd.ratingCount ?? 0,
+        arTryOnRating: newProd.arTryOnRating ?? 0,
+        arTryOnRatingCount: newProd.arTryOnRatingCount ?? 0,
+        reviews: newProd.reviews ?? []
       };
 
-      pendingProductsRef.current = pendingProductsRef.current.map(product =>
-        product.id === completedProduct.id ? savedProduct : product
-      );
-      setProducts(prev => prev.map(product =>
-        product.id === completedProduct.id ? savedProduct : product
-      ));
+      pendingProductsRef.current = [completedProduct, ...pendingProductsRef.current];
+      setProducts(prev => [completedProduct, ...prev]);
+
+      setActivities(prev => [
+        {
+          id: 'prod-' + Date.now(),
+          type: 'inventory',
+          title: 'New Product Added',
+          description: `${newProd.brand} ${newProd.name} (${newProd.stock} Units Added)`,
+          time: 'Just now'
+        },
+        ...prev
+      ]);
+
+      try {
+        const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+        const productDocument = removeUndefinedFields({
+          ...newProd,
+          stock,
+          stockQuantity: stock,
+          sizes: [],
+          vendorId,
+          vendorName,
+          ownerName: vendorProfile.ownerName,
+          vendorLocation: vendorProfile.businessAddress,
+          vendorPhone: vendorProfile.contactDetails,
+          status: 'active',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+
+        const docRef = await addDoc(collection(db, 'products'), productDocument);
+        const savedProduct = {
+          ...completedProduct,
+          id: docRef.id
+        };
+
+        pendingProductsRef.current = pendingProductsRef.current.map(product =>
+          product.id === completedProduct.id ? savedProduct : product
+        );
+        setProducts(prev => prev.map(product =>
+          product.id === completedProduct.id ? savedProduct : product
+        ));
+      } catch (err) {
+        pendingProductsRef.current = pendingProductsRef.current.filter(product => product.id !== completedProduct.id);
+        setProducts(prev => prev.filter(product => product.id !== completedProduct.id));
+        // eslint-disable-next-line no-console
+        console.error('Failed to save product to Firestore', err);
+        throw err;
+      }
     } catch (err) {
-      pendingProductsRef.current = pendingProductsRef.current.filter(product => product.id !== completedProduct.id);
-      setProducts(prev => prev.filter(product => product.id !== completedProduct.id));
       // eslint-disable-next-line no-console
-      console.error('Failed to save product to Firestore', err);
-      throw err;
+      console.error('Product save failed', err);
+      const message = err instanceof Error ? err.message : 'Unknown Firebase error';
+      throw new Error(message);
     } finally {
       addingProductRef.current = false;
     }
   };
 
   const handleUpdateProduct = async (updatedProd: Product) => {
+    if (!canManageProducts || updatedProd.vendorId !== profileInfo.vendorId) {
+      throw new Error('You can only update products owned by your vendor company.');
+    }
+
     const previousProducts = products;
     setProducts(prev => prev.map(p => p.id === updatedProd.id ? updatedProd : p));
     setEditingProduct(null);
@@ -786,6 +757,15 @@ export default function App() {
     ]);
 
     try {
+      const currentUserId = auth.currentUser?.uid;
+      if (!currentUserId) {
+        throw new Error('Please sign in with a vendor account before updating products.');
+      }
+
+      const vendorProfile = profileInfo;
+      if (!isValidVendorId(vendorProfile.vendorId)) {
+        throw new Error('Your account is not linked to a verified vendor company.');
+      }
       const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
       const { id, createdAt, updatedAt, reviews, rating, ratingCount, arTryOnRating, arTryOnRatingCount, ...productData } = updatedProd;
       const productDocument = removeUndefinedFields({
@@ -793,11 +773,11 @@ export default function App() {
         stock: Math.max(0, Math.trunc(updatedProd.stock)),
         stockQuantity: Math.max(0, Math.trunc(updatedProd.stock)),
         sizes: [],
-        vendorId: updatedProd.vendorId || profileInfo.vendorId || auth.currentUser?.uid || 'VEN-DEMO',
-        vendorName: updatedProd.vendorName || profileInfo.companyName || profileInfo.storeName,
-        ownerName: profileInfo.ownerName,
-        vendorLocation: profileInfo.businessAddress,
-        vendorPhone: profileInfo.contactDetails,
+        vendorId: updatedProd.vendorId || vendorProfile.vendorId,
+        vendorName: updatedProd.vendorName || vendorProfile.companyName || vendorProfile.storeName,
+        ownerName: vendorProfile.ownerName,
+        vendorLocation: vendorProfile.businessAddress,
+        vendorPhone: vendorProfile.contactDetails,
         updatedAt: serverTimestamp()
       });
 
@@ -811,6 +791,13 @@ export default function App() {
   };
 
   const handleDeleteProduct = async (productId: string) => {
+    const ownedProduct = products.find(product =>
+      product.id === productId && product.vendorId === profileInfo.vendorId
+    );
+    if (!canManageProducts || !ownedProduct) {
+      throw new Error('You can only delete products owned by your vendor company.');
+    }
+
     const previousProducts = products;
     setProducts(prev => prev.filter(product => product.id !== productId));
 
@@ -874,12 +861,23 @@ export default function App() {
   };
 
   const handleEditTrigger = (prod: Product) => {
+    if (!canManageProducts || !profileInfo.vendorId || prod.vendorId !== profileInfo.vendorId) {
+      return;
+    }
+
+    setSelectedProductVendor('');
     setEditingProduct(prod);
     setActiveTab('addProduct');
   };
 
   // Switch tabs instantly but reset editing states
   const handleTabChange = (tab: string) => {
+    if (tab === 'addProduct' && !canAddProductToCurrentView) {
+      setActiveTab('products');
+      setMobileMenuOpen(false);
+      return;
+    }
+
     setActiveTab(tab);
     setMobileMenuOpen(false);
     if (tab !== 'addProduct') {
@@ -939,7 +937,7 @@ export default function App() {
           {[
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'products', label: 'Products' },
-            { id: 'addProduct', label: 'Add Product' },
+            ...(canAddProductToCurrentView ? [{ id: 'addProduct', label: 'Add Product' }] : []),
             { id: 'orders', label: 'Orders' },
             { id: 'analytics', label: 'Analytics' },
             { id: 'marketInsights', label: 'Market Insights' },
@@ -975,6 +973,7 @@ export default function App() {
         setActiveTab={handleTabChange} 
         isLoggedIn={isLoggedIn}
         onLogout={handleLogout}
+        canAddProduct={canManageProducts}
       />
 
       {/* Content wrapper */}
@@ -995,6 +994,12 @@ export default function App() {
 
         {/* Dynamic page container */}
         <main className="flex-grow p-6 md:p-10 max-w-7xl w-full mx-auto">
+          {!canManageProducts && (
+            <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+              This account can browse vendor catalogs, but it is not linked to a verified vendor company. Product creation and editing are disabled until an administrator links the account to its company.
+            </div>
+          )}
+
           {activeTab === 'dashboard' && (
             <Dashboard 
               products={products}
@@ -1002,6 +1007,7 @@ export default function App() {
               activities={activities}
               profileInfo={profileInfo}
               setActiveTab={handleTabChange}
+              canAddProduct={canAddProductToCurrentView}
               onSelectVendor={setSelectedProductVendor}
               onApplyProductFilters={filters => {
                 setDashboardProductFilters(filters);
@@ -1020,12 +1026,13 @@ export default function App() {
               setActiveTab={handleTabChange}
               onEditProduct={handleEditTrigger}
               onDeleteProduct={handleDeleteProduct}
+              canManageProducts={canManageProducts}
               selectedVendor={selectedProductVendor}
               initialFilters={dashboardProductFilters}
             />
           )}
 
-          {activeTab === 'addProduct' && (
+          {activeTab === 'addProduct' && canAddProductToCurrentView && (
             <AddProduct 
               onAddProduct={handleAddProduct}
               setActiveTab={handleTabChange}

@@ -25,6 +25,22 @@ service cloud.firestore {
         : null;
     }
 
+    function validVendorId(id) {
+      return id is string && id.matches('VEN[0-9]{3}');
+    }
+
+    function vendorCanWriteProduct(vendorIdValue) {
+      return signedIn()
+        && validVendorId(vendorIdValue)
+        && (
+          vendorIdValue == currentVendorId()
+          || exists(/databases/$(database)/documents/vendors/$(vendorIdValue))
+            && get(/databases/$(database)/documents/vendors/$(vendorIdValue)).data.uid == request.auth.uid
+          || exists(/databases/$(database)/documents/owner/$(request.auth.uid))
+            && get(/databases/$(database)/documents/owner/$(request.auth.uid)).data.vendorId == vendorIdValue
+        );
+    }
+
     function orderBelongsToVendor(data) {
       return signedIn() && (
         ('vendorId' in data && ownsVendor(data.vendorId))
@@ -92,11 +108,11 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if true;
-      allow create: if signedIn() && ownsVendor(request.resource.data.vendorId);
+      allow create: if vendorCanWriteProduct(request.resource.data.vendorId);
       allow update: if signedIn()
-        && ownsVendor(resource.data.vendorId)
+        && vendorCanWriteProduct(resource.data.vendorId)
         && request.resource.data.vendorId == resource.data.vendorId;
-      allow delete: if signedIn() && ownsVendor(resource.data.vendorId);
+      allow delete: if signedIn() && vendorCanWriteProduct(resource.data.vendorId);
     }
 
     match /orders/{orderId} {
@@ -143,7 +159,7 @@ service cloud.firestore {
     }
 
     match /reviews/{reviewId} {
-      allow read: if true;
+      allow read: if ownsVendor(resource.data.vendorId);
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
           'productId', 'productName', 'vendorId', 'arTryOn', 'arRating', 'rating',

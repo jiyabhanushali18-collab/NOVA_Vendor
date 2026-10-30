@@ -20,7 +20,7 @@ export interface ProductDocument {
   imageUrl: string;
   images?: string[];
   sizes: string[];
-  vendorId: string;
+  vendorId?: string;
   vendorName: string;
   stock: number;
   color: string;
@@ -84,6 +84,25 @@ const readTimestampMs = (value: unknown) => {
   }
 
   return 0;
+};
+
+const readOptionalNumber = (...values: unknown[]): number | undefined => {
+  for (const value of values) {
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value.replace(/[^0-9.-]/g, ''));
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return undefined;
 };
 
 const sortProductsByRecentUpdate = (products: ProductDocument[]) =>
@@ -215,7 +234,14 @@ const readVariants = (value: unknown): ProductVariantDocument[] | undefined => {
       .concat(readImageStrings(data.photos))
       .concat(readImageStrings(data.media));
     const singleImage = readString(data.image, data.imageUrl, data.photo, data.thumbnail, data.src);
-    const stock = data.stock === undefined ? undefined : readNumber(data.stock);
+    const stock = readOptionalNumber(
+      data.stock,
+      data.Stock,
+      data.stockQuantity,
+      data.StockQuantity,
+      data.quantity,
+      data.qty
+    );
     const normalizedImages = Array.from(new Set([
       ...images,
       singleImage
@@ -345,7 +371,7 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
   const discountedPrice = discountedPriceRaw !== undefined ? readNumber(discountedPriceRaw) : undefined;
 
   // Stock resolution supports legacy product records created by the NOVA app.
-  const stock = readNumber(
+  const stockFields = [
     data.stock,
     data.Stock,
     data.stockQuantity,
@@ -358,7 +384,9 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
     data.quantityAvailable,
     data.quantity,
     data.qty
-  );
+  ].map(value => readOptionalNumber(value))
+    .filter((value): value is number => value !== undefined);
+  const explicitStock = stockFields.find(value => value > 0) ?? stockFields[0];
 
   // Images collection
   const allImages = collectAllImages(data);
@@ -378,11 +406,17 @@ const mapProductDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Prod
   const primaryColor = colors[0] || readString(data.color, data.Color, data.colour) || 'Default';
 
   // Vendor resolution
-  const vendorId = readString(data.vendorId, data['vendorId '], data.ownerUid, data.vendor?.id) || 'VEN001';
+  const vendorId = readString(data.vendorId, data['vendorId '], data.ownerUid, data.vendor?.id) || undefined;
   const vendorName = readString(data.vendorName, data.companyName, data.storeName, data.brand, data.Brand, data.vendor?.name) || 'Fashion Fushion';
 
   // Variants resolution
   let variants = readVariants(data.variants);
+  const variantStock = variants?.reduce((total, variant) => total + (variant.stock ?? 0), 0) ?? 0;
+  const stock = explicitStock !== undefined && explicitStock > 0
+    ? explicitStock
+    : variantStock > 0
+      ? variantStock
+      : explicitStock ?? 0;
   if (!variants && colors.length > 0) {
     variants = colors.map(col => {
       // Find matching color images if any

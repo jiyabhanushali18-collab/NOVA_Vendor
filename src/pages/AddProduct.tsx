@@ -279,12 +279,11 @@ const normalizedVariants = (variants.length ? variants : [{ color: fallbackColor
           .filter(Boolean)
       ));
       const primaryColor = variantColors[0] || fallbackColor || 'Default';
-      // Determine product stock with fallback to at least 1 unit
+      // Use variant quantities when the product-level quantity is not set.
       const enteredProductStock = Number(stock);
       const hasEnteredStock = !isNaN(enteredProductStock) && enteredProductStock > 0;
       const variantStockTotal = variantsWithImages.reduce((total, variant) => total + (variant.stock ?? 0), 0);
-      let totalStock = hasEnteredStock ? enteredProductStock : variantStockTotal;
-      if (totalStock <= 0) totalStock = 1;
+      const totalStock = hasEnteredStock ? enteredProductStock : variantStockTotal;
 
       const productPayload = {
         name,
